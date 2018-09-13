@@ -20,8 +20,10 @@
 # see <http://www.lsstcorp.org/LegalNotices/>.
 #
 
+# import os
 import unittest
 import itertools
+import tempfile
 
 import numpy as np
 
@@ -33,7 +35,8 @@ import lsst.afw.cameraGeom
 from lsst.afw.table import LL, LR, UL, UR
 from lsst.pipe.base import Struct
 from lsst.ip.isr import (IsrTask, subtractCrosstalk, extractCrosstalkRatios, measureCrosstalkCoefficients,
-                         MeasureCrosstalkTask)
+                         MeasureCrosstalkTask, writeCrosstalkCoeffs)
+
 
 try:
     debug
@@ -42,6 +45,12 @@ except NameError:
 else:
     import lsst.afw.display
     display = lsst.afw.display.Display(backend="ds9", frame=1)
+
+
+# obsTestDir = lsst.utils.getPackageDir('obs_test')
+# inputDir = os.path.join(obsTestDir, "data", "input")
+
+outputName = None    # specify a name (as a string) to save the output crosstalk coeffs.
 
 
 class CrosstalkTestCase(lsst.utils.tests.TestCase):
@@ -174,6 +183,9 @@ class CrosstalkTestCase(lsst.utils.tests.TestCase):
                           crosstalkStr=self.crosstalkStr)
         self.checkSubtracted(self.exposure)
 
+        outPath = tempfile.mktemp() if outputName is None else "{}-isrCrosstalk".format(outputName)
+        writeCrosstalkCoeffs(outPath, coeff, det=None, crosstalkName="testDirectAPI", indent=2)
+
     def testTaskAPI(self):
         """Test that the Tasks work
 
@@ -201,6 +213,26 @@ class CrosstalkTestCase(lsst.utils.tests.TestCase):
         isr = IsrTask(config=config)
         isr.crosstalk.run(self.exposure)
         self.checkSubtracted(self.exposure)
+    #
+    # def testMeasureCrosstalkTask(self):
+    #     """Test that MeasureCrosstalkTask works
+    #
+    #     To fully test this task, a real inputDir is needed.
+    #     """
+    #     outPath = (tempfile.mkdtemp() if outputName is None
+    #                else "{}-isrMeasureCrosstalkTask".format(outputName))
+    #     outFile = outPath + "coeff"
+    #     outDump = outPath + "ratios"
+    #     dataId = dict(visit=1)
+    #     dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
+    #     parseRunResult = MeasureCrosstalkTask.parseAndRun(
+    #         args=[inputDir, "--output", outPath, "--outputFileName", outFile, "--clobber-config",
+    #               "--doraise", "--crosstalkName", "TaskApiCrosstalk", "--dump-ratios", outDump,
+    #               "--id"] +
+    #         dataIdStrList + ["--config", "isr.doDark=False"],
+    #         doReturnResults=True
+    #     )
+    #     assert parseRunResult
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
