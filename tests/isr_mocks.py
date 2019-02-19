@@ -20,10 +20,10 @@
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
-import pdb
+import tempfile
+
 import lsst.afw.image as afwImage
 import lsst.afw.geom as afwGeom
-import lsst.afw.table as afwTable
 import lsst.afw.cameraGeom.utils as afwUtils
 import lsst.afw.cameraGeom.testUtils as afwTestUtils
 from lsst.meas.algorithms import Defect
@@ -70,13 +70,13 @@ class IsrMock():
         Flux scale factor to apply to the simulated fringe pattern.
     """
     crosstalkKernel = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                       [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
 
     def __init__(self, isLsstLike=True, isTrimmed=True, detectorIndex=20,
                  rng_seed=20000913,
@@ -85,8 +85,7 @@ class IsrMock():
                  expTime=5.0,
                  biasLevel=8000.0, biasNoise=250.0,
                  darkRate=20.0,
-                 fringeIntensity = 0.01,
-             ):
+                 fringeIntensity=0.01):
         self.isLsstLike = isLsstLike
         self.isTrimmed = isTrimmed
         self.detectorIndex = detectorIndex
@@ -95,10 +94,10 @@ class IsrMock():
         self.background = background
         self.noise = noise
         self.expTime = expTime
-        self.biasLevel=biasLevel
-        self.biasNoise=biasNoise
-        self.darkRate=darkRate
-        self.fringeIntensity=fringeIntensity
+        self.biasLevel = biasLevel
+        self.biasNoise = biasNoise
+        self.darkRate = darkRate
+        self.fringeIntensity = fringeIntensity
 
         self.rng = np.random.RandomState(self.rng_seed)
         self.camera = self.getCamera()
@@ -182,6 +181,9 @@ class IsrMock():
         exposure = afwImage.makeExposure(maskedImage)
         exposure.setDetector(detector)
         exposure.setWcs(self.getWcs())
+
+        visitInfo = afwImage.VisitInfo(exposureTime=1.0, darkTime=1.0)
+        exposure.getInfo().setVisitInfo(visitInfo)
         return exposure
 
     def expMock(self, detectorIndex=20):
@@ -199,10 +201,8 @@ class IsrMock():
             Construct exposure containing masked image of the
             appropriate size.
         """
-        exposure = self.getExposure(detectorIndex)
-        expData = exposure.image[exposure.getBBox()]
 
-        return exposure
+        return self.getExposure(detectorIndex)
 
     def ampMock(self, detectorIndex=20):
         r"""Return a simple exposure amplifier-by-amplifier.
@@ -257,11 +257,11 @@ class IsrMock():
         internal transpose between numpy and afw.image coordinates.
         """
         if self.isTrimmed:
-            u = a + amp.getBBox().getBeginX()
-            v = b + amp.getBBox().getBeginY()
+            u = x + amp.getBBox().getBeginX()
+            v = y + amp.getBBox().getBeginY()
         else:
-            u = a + amp.getRawDataBBox().getBeginX()
-            v = b + amp.getRawDataBBox().getBeginY()
+            u = x + amp.getRawDataBBox().getBeginX()
+            v = y + amp.getRawDataBBox().getBeginY()
 
         return (v, u)
 
@@ -297,8 +297,9 @@ class IsrMock():
         sigma : float
             Sigma of the Gaussian noise.
         """
-        ampData.getArray()[:] = ampData.getArray()[:] + self.rng.normal(mean, sigma,
-                                                                        size=ampData.getDimensions()).transpose()
+        ampArr = ampData.getArray()
+        ampArr[:] = ampArr[:] + self.rng.normal(mean, sigma,
+                                                size=ampData.getDimensions()).transpose()
 
     def amplifierAddYGradient(self, ampData, start, end):
         r"""Add a y-axis linear gradient to an amplifier's image data.
@@ -313,8 +314,9 @@ class IsrMock():
             End value of the gradient (at y=ymax).
         """
         nPixY = ampData.getDimensions().getY()
-        ampData.getArray()[:] = ampData.getArray()[:] + (np.interp(range(nPixY), (0, nPixY - 1), (start, end)).reshape(nPixY,1) +
-                                                         np.zeros(ampData.getDimensions()).transpose())
+        ampArr = ampData.getArray()
+        ampArr[:] = ampArr[:] + (np.interp(range(nPixY), (0, nPixY - 1), (start, end)).reshape(nPixY, 1) +
+                                 np.zeros(ampData.getDimensions()).transpose())
 
     def amplifierAddFringe(self, ampData, scale):
         r"""Add a fringe-like ripple pattern to an amplifier's image data.
@@ -335,7 +337,8 @@ class IsrMock():
         for x in range(0, ampData.getDimensions().getX()):
             for y in range(0, ampData.getDimensions().getY()):
                 (u, v) = self.localCoordToExpCoord(ampData, x, y)
-                ampData.getArray()[y][x] = ampData.getArray()[y][x] + scale * np.sinc( ((u - 100)/50)**2 + (v / 50)**2)
+                ampData.getArray()[y][x] = (ampData.getArray()[y][x] +
+                                            scale * np.sinc(((u - 100)/50)**2 + (v / 50)**2))
 
     def amplifierAddFlat(self, ampData, size):
         r"""Add a flat-like dome pattern to an amplifier's image data.
@@ -356,7 +359,8 @@ class IsrMock():
         for x in range(0, ampData.getDimensions().getX()):
             for y in range(0, ampData.getDimensions().getY()):
                 (u, v) = self.localCoordToExpCoord(ampData, x, y)
-                ampData.getArray()[y][x] = ampData.getArray()[y][x] * np.exp(-0.5 * ( (u - 100)**2 + (v - 100)**2 )**2 / size**2)
+                ampData.getArray()[y][x] = (ampData.getArray()[y][x] *
+                                            np.exp(-0.5 * ((u - 100)**2 + (v - 100)**2)**2 / size**2))
 
     def amplifierAddSource(self, ampData, scale):
         r"""Add a single Gaussian source to an amplifier.
@@ -370,7 +374,8 @@ class IsrMock():
         """
         for x in range(0, ampData.getDimensions().getX()):
             for y in range(0, ampData.getDimensions().getY()):
-                ampData.getArray()[y][x] = ampData.getArray()[y][x] + scale * np.exp(-0.5 * ( (x - 50)**2 + (y - 25)**2 )**2 / 3.0**2)
+                ampData.getArray()[y][x] = (ampData.getArray()[y][x] +
+                                            scale * np.exp(-0.5 * ((x - 50)**2 + (y - 25)**2)**2 / 3.0**2))
 
     def amplifierAddCT(self, ampDataSource, ampDataTarget, scale):
         r"""Add a scaled copy of an amplifier to another.
@@ -388,7 +393,8 @@ class IsrMock():
         """
         for x in range(0, ampDataSource.getDimensions().getX()):
             for y in range(0, ampDataSource.getDimensions().getY()):
-                ampDataTarget.getArray()[y][x] = ampDataTarget.getArray()[y][x] + scale * ampDataSource.getArray()[y][x]
+                ampDataTarget.getArray()[y][x] = (ampDataTarget.getArray()[y][x] +
+                                                  scale * ampDataSource.getArray()[y][x])
 
     def mock(self):
         r"""Generate appropriate mock data.
@@ -446,6 +452,58 @@ class RawMock(IsrMock):
         return exposure
 
 
+class RawDictMock(IsrMock):
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("isTrimmed", False)
+        super().__init__(*args, **kwargs)
+
+    def mock(self):
+        r"""Generate a raw exposure, stored as a dict of amplifiers
+
+        Returns
+        -------
+        exposure : dict of `lsst.afw.exposure.Exposure`
+            Simulated raw exposure dictionary
+
+        Notes
+        -----
+        The amplifiers of this device should be equal to:
+            fringe + flat * ( ( linearity * cte *
+                                (raw + overscan + bias + crosstalk) + dark ) X
+                               brighterFatter )
+        where:
+            raw = sky + source
+        """
+        exposure = self.ampMock()
+        exposure.image[exposure.getBBox()] = 0.0
+
+        expDict = dict()
+        for idx, amp in enumerate(exposure.getDetector()):
+            ampData = exposure.image[amp.getRawDataBBox()]
+            overscanData = exposure.image[amp.getRawHorizontalOverscanBBox()]
+
+            self.amplifierAddNoise(ampData, 0.0 * idx, self.noise)
+            self.amplifierAddYGradient(ampData, -100, 100)
+
+            if idx == 0:
+                self.amplifierAddSource(ampData, 35000)
+
+            self.amplifierAddNoise(overscanData, 0.0, self.noise)
+            self.amplifierAddYGradient(overscanData, -100, 100)
+
+        for idxS, ampS in enumerate(exposure.getDetector()):
+            for idxT, ampT in enumerate(exposure.getDetector()):
+                ampDataS = exposure.image[ampS.getRawDataBBox()]
+                ampDataT = exposure.image[ampT.getRawDataBBox()]
+                self.amplifierAddCT(ampDataS, ampDataT, self.crosstalkKernel[idxT][idxS])
+
+        for amp in exposure.getDetector():
+            expDict[amp.getName()] = exposure
+
+        return expDict
+#        return exposure
+
+
 class TrimmedRawMock(IsrMock):
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("isTrimmed", True)
@@ -488,6 +546,7 @@ class TrimmedRawMock(IsrMock):
 
         return exposure
 
+
 class BiasMock(IsrMock):
     def mock(self):
         r"""Generate a master bias correction.
@@ -510,6 +569,7 @@ class BiasMock(IsrMock):
             self.amplifierAddNoise(ampData, self.biasLevel, self.biasNoise)
 
         return exposure
+
 
 class DarkMock(IsrMock):
     def mock(self):
@@ -534,6 +594,7 @@ class DarkMock(IsrMock):
                                    np.sqrt(self.darkRate * self.expTime))
         return exposure
 
+
 class FlatMock(IsrMock):
     def mock(self):
         r"""Generate a master flat correction.
@@ -556,8 +617,8 @@ class FlatMock(IsrMock):
             self.amplifierAddNoise(ampData, 1.0, 0.01)
             self.amplifierAddFlat(ampData, 30000.0)
 
-
         return exposure
+
 
 class FringeMock(IsrMock):
     def mock(self):
@@ -572,7 +633,6 @@ class FringeMock(IsrMock):
         -----
         fringe = sinc + (0.0 +/- 0.01)
         """
-        # Sinc functional form 
         exposure = self.expMock()
         exposure.image[exposure.getBBox()] = 0.0
 
@@ -583,6 +643,32 @@ class FringeMock(IsrMock):
             self.amplifierAddFringe(ampData, 1000)
 
         return exposure
+
+
+class UntrimmedFringeMock(IsrMock):
+    def mock(self):
+        r"""Generate a master fringe correction.
+
+        Returns
+        -------
+        exposure : `lsst.afw.exposure.Exposure`
+            Simulated fringe exposure.
+
+        Notes
+        -----
+        fringe = sinc + (0.0 +/- 0.01)
+        """
+        exposure = self.expMock()
+        exposure.image[exposure.getBBox()] = 0.0
+
+        for amp in exposure.getDetector():
+            ampData = exposure.image[amp.getRawDataBBox()]
+
+            self.amplifierAddNoise(ampData, 0.0, 0.01)
+            self.amplifierAddFringe(ampData, 1000)
+
+        return exposure
+
 
 class BfKernelMock(IsrMock):
     def mock(self):
@@ -601,6 +687,7 @@ class BfKernelMock(IsrMock):
         kernel = kernel / 273.0
         return kernel
 
+
 class DefectMock(IsrMock):
     def mock(self):
         r"""Generate a simple defect box.
@@ -617,6 +704,7 @@ class DefectMock(IsrMock):
 
         return defectList
 
+
 class TransmissionMock(IsrMock):
     def mock(self):
         r"""Generate a simulated transmission curve.
@@ -626,33 +714,35 @@ class TransmissionMock(IsrMock):
         transmission : `lsst.afw.image.TransmissionCurve`
             Simulated transmission curve.
         """
-        throughputMin = 0.0
-        throughputMax = 0.0
-        throughput = np.array([0.285, 0.360, 0.517, 0.647, 0.748, 0.818, 0.864, 0.910, 0.936, 0.948, 0.951, 0.958,
-                               0.954, 0.956, 0.950, 0.938, 0.929, 0.916, 0.908, 0.899, 0.892, 0.882, 0.863, 0.856,
-                               0.829, 0.825, 0.821, 0.780, 0.745, 0.692, 0.609, 0.517, 0.378, 0.209, 0.088, 0.047])
-        wavelength = np.array([3600.,  3800., 4000., 4200., 4400., 4600., 4800., 5000., 5200., 5400.,
-                               5600.,  5800., 6000., 6200., 6400., 6600., 6800., 7000., 7200., 7400.,
-                               7600.,  7800., 8000., 8200., 8400., 8600., 8800., 9000., 9200., 9400.,
-                               9600.,  9800., 10000., 10200., 10400., 10600.])
+        # throughputMin = 0.0
+        # throughputMax = 0.0
+        # throughput = np.array([0.285, 0.360, 0.517, 0.647, 0.748, 0.818,
+        #                        0.864, 0.910, 0.936, 0.948, 0.951, 0.958,
+        #                        0.954, 0.956, 0.950, 0.938, 0.929, 0.916,
+        #                        0.908, 0.899, 0.892, 0.882, 0.863, 0.856,
+        #                        0.829, 0.825, 0.821, 0.780, 0.745, 0.692,
+        #                        0.609, 0.517, 0.378, 0.209, 0.088, 0.047])
+        # wavelength = np.array([3600., 3800., 4000., 4200., 4400., 4600.,
+        #                        4800., 5000., 5200., 5400., 5600., 5800.,
+        #                        6000., 6200., 6400., 6600., 6800., 7000.,
+        #                        7200., 7400., 7600., 7800., 8000., 8200.,
+        #                        8400., 8600., 8800., 9000., 9200., 9400.,
+        #                        9600., 9800., 10000., 10200., 10400., 10600.])
 
+        # schema = afwTable.SimpleTable.makeMinimalSchema()
+        # schema.addField(afwTable.Field["D"]("throughputAtMin", "throughput below minimum wavelength"))
+        # schema.addField(afwTable.Field["D"]("throughputAtMax", "throughput above maximum wavelength"))
+        # schema.addField(afwTable.Field["D"]("throughput", "array of known throughput values"))
+        # schema.addField(afwTable.Field["D"]("wavelengths", "array of known wavelength values"))
 
-        # I'm not convinced I have this correct.
-        # example: https://github.com/lsst/afw/blob/7a2ee2b6ab51af334669bc5ddece2c90ce2c87ca/tests/test_sourceMatch.py
-        # ""    https://github.com/lsst/analysis/blob/2614498b8549528a53230aeb48b37dfce248fa86/python/lsst/analysis/cosmos.py
-        schema = afwTable.SimpleTable.makeMinimalSchema()
-        schema.addField(afwTable.Field["D"]("throughputAtMin", "throughput below minimum wavelength"))
-        schema.addField(afwTable.Field["D"]("throughputAtMax", "throughput above maximum wavelength"))
-        schema.addField(afwTable.Field["D"]("throughput", "array of known throughput values"))
-        schema.addField(afwTable.Field["D"]("wavelengths", "array of known wavelength values"))
+        # transmission = afwTable.SimpleCatalog(schema)
+        # transmission['throughputAtMin'][:] = throughputMin
+        # transmission['throughputAtMax'][:] = throughputMax
+        # transmission['throughput'][:] = throughput[0]
+        # transmission['wavelengths'][:] = wavelength[0]
 
-        transmission = afwTable.SimpleCatalog(schema)
-        transmission['throughputAtMin'][:] = throughputMin
-        transmission['throughputAtMax'][:] = throughputMax
-        transmission['throughput'][:] = throughput[0]
-        transmission['wavelengths'][:] = wavelength[0]
+        return afwImage.TransmissionCurve.makeIdentity()
 
-        return transmission
 
 class ButlerMock(IsrMock):
     def mock(self, mockType='raw'):
@@ -666,3 +756,46 @@ class ButlerMock(IsrMock):
             return DarkMock().mock()
         elif mockType == 'fringe':
             return FringeMock().mock()
+
+
+class DataRefMock(object):
+
+    dataId = "My Fake Data"
+    darkval = 2.  # e-/sec
+    oscan = 250.  # DN
+    gradient = .10
+    exptime = 15  # seconds
+    darkexptime = 40.  # seconds
+
+    def get(self, dataType, **kwargs):
+        if "_filename" in dataType:
+            return tempfile.mktemp(), "mock"
+        elif 'transmission_' in dataType:
+            return TransmissionMock().mock()
+        elif dataType == 'ccdExposureId':
+            return 20090913
+        elif dataType == 'camera':
+            return IsrMock().getCamera()
+        elif dataType == 'raw':
+            return RawMock().mock()
+        elif dataType == 'bias':
+            return BiasMock().mock()
+        elif dataType == 'dark':
+            return DarkMock().mock()
+        elif dataType == 'flat':
+            return FlatMock().mock()
+        elif dataType == 'fringe':
+            return FringeMock().mock()
+        elif dataType == 'defects':
+            return DefectMock().mock()
+        elif dataType == 'bfKernel':
+            return BfKernelMock().mock()
+        elif dataType == 'linearizer':
+            return None
+        elif dataType == 'crosstalkSources':
+            return None
+        else:
+            return None
+
+    def put(self, exposure, filename):
+        exposure.writeFits(filename+".fits")

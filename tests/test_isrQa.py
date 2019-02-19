@@ -21,35 +21,43 @@
 #
 
 import unittest
+import numpy as np
 
+# import lsst.meas.algorithms as measAlg
+
+# import lsst.afw.geom as afwGeom
+# import lsst.afw.image as afwImage
+# from lsst.afw.image.testUtils import assertImagesAlmostEqual
 import lsst.utils.tests
-from lsst.ip.isr.assembleCcdTask import (AssembleCcdConfig, AssembleCcdTask)
+import lsst.ip.isr.isrQa as isrQa
+# import lsst.pex.exceptions as pexExcept
 import isr_mocks as mock
 
 
-class AssembleCcdCases(lsst.utils.tests.TestCase):
+class IsrQaCases(lsst.utils.tests.TestCase):
 
-    def testAssembleCcdTask_single(self):
-        inputExp = mock.RawMock().mock()
+    def setUp(self):
+        self.inputExp = mock.TrimmedRawMock().mock()
+        self.mi = self.inputExp.getMaskedImage()
+        self.config = isrQa.IsrQaConfig()
 
-        for trim in (True, False):
-            with self.subTest(trim=trim):
-                self.config = AssembleCcdConfig(doTrim=trim)
-                self.task = AssembleCcdTask()
-                assembleOutput = self.task.assembleCcd(inputExp)
+    def tearDown(self):
+        pass
 
-        assert assembleOutput
+    def test_makeThumbnail(self):
+        thumb = isrQa.makeThumbnail(self.inputExp, self.config)
+        assert np.nonzero(thumb)
 
-    def testAssembleCcdTask_dict(self):
-        inputExpDict = mock.RawDictMock().mock()
+        self.config.thumbnailSatBorder = 0
+        thumb = isrQa.makeThumbnail(self.inputExp, self.config)
 
-        for trim in (True, False):
-            with self.subTest(trim=trim):
-                self.config = AssembleCcdConfig(doTrim=trim)
-                self.task = AssembleCcdTask()
-                assembleOutput = self.task.assembleCcd(inputExpDict)
+        assert np.nonzero(thumb)
 
-        assert assembleOutput
+    def test_writeThumbnail(self):
+        dataRef = mock.DataRefMock()
+        thumb = isrQa.makeThumbnail(self.inputExp, self.config)
+
+        isrQa.writeThumbnail(dataRef, thumb, "thumbnail")
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

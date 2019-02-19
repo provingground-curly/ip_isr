@@ -29,6 +29,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
 import lsst.afw.image.utils as afwImageUtils
 from lsst.ip.isr.fringe import FringeTask
+import isr_mocks as mock
 
 try:
     debug
@@ -233,6 +234,13 @@ class FringeTestCase(lsst.utils.tests.TestCase):
         mi = exp.getMaskedImage()
         mi -= afwMath.makeStatistics(mi, afwMath.MEAN).getValue()
         self.assertLess(afwMath.makeStatistics(mi, afwMath.STDEV).getValue(), stddevMax)
+
+    def test_readFringes(self):
+        task = FringeTask()
+        dataRef = mock.DataRefMock()
+
+        result = task.readFringes(dataRef, assembler=None)
+        assert result
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
