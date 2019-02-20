@@ -175,6 +175,15 @@ class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
                 self.config.doUseFilterTransmission = doTheThing
                 self.config.doUseSensorTransmission = doTheThing
                 self.config.doUseAtmosphereTransmission = doTheThing
+                self.config.qa.saveStats = doTheThing
+                self.config.qa.doThumbnailOss = doTheThing
+                self.config.qa.doThumbnailFlattened = doTheThing
+
+#                self.config.doCrosstalk = doTheThing
+#                self.config.doCrosstalkBeforeAssemble = doTheThing
+                self.config.doApplyGains = not doTheThing
+                self.config.doCameraSpecificMasking = doTheThing
+                self.config.vignette.doWriteVignettePolygon = doTheThing
 
                 self.task = IsrTask(config=self.config)
                 #  self.dataRef.get("defects"),

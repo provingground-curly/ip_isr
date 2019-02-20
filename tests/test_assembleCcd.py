@@ -29,13 +29,23 @@ import isr_mocks as mock
 
 class AssembleCcdCases(lsst.utils.tests.TestCase):
 
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        try:
+            del self.config
+            del self.task
+        except AttributeError:
+            pass
+
     def testAssembleCcdTask_single(self):
         inputExp = mock.RawMock().mock()
 
-        for trim in (True, False):
-            with self.subTest(trim=trim):
-                self.config = AssembleCcdConfig(doTrim=trim)
-                self.task = AssembleCcdTask()
+        for doTrim in (True, False):
+            with self.subTest(doTrim=doTrim):
+                self.config = AssembleCcdConfig(doTrim=doTrim, keysToRemove=['SHEEP', 'MONKEYS', 'ZSHEEP'])
+                self.task = AssembleCcdTask(config=self.config)
                 assembleOutput = self.task.assembleCcd(inputExp)
 
         assert assembleOutput
@@ -43,13 +53,20 @@ class AssembleCcdCases(lsst.utils.tests.TestCase):
     def testAssembleCcdTask_dict(self):
         inputExpDict = mock.RawDictMock().mock()
 
-        for trim in (True, False):
-            with self.subTest(trim=trim):
-                self.config = AssembleCcdConfig(doTrim=trim)
-                self.task = AssembleCcdTask()
+        for doTrim in (True, False):
+            with self.subTest(doTrim=doTrim):
+                self.config = AssembleCcdConfig(doTrim=doTrim)
+                self.task = AssembleCcdTask(config=self.config)
                 assembleOutput = self.task.assembleCcd(inputExpDict)
-
         assert assembleOutput
+
+    def testAssembleCcdTask_fail(self):
+        inputExp = None
+        with self.assertRaises(TypeError):
+            self.config = AssembleCcdConfig(doTrim=False)
+            self.task = AssembleCcdTask(config=self.config)
+            assembleOutput = self.task.assembleCcd(inputExp)
+            assert assembleOutput
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

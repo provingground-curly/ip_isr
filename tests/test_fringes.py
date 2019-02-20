@@ -29,6 +29,7 @@ import lsst.afw.image as afwImage
 import lsst.afw.display.ds9 as ds9
 import lsst.afw.image.utils as afwImageUtils
 from lsst.ip.isr.fringe import FringeTask
+
 import isr_mocks as mock
 
 try:
@@ -97,10 +98,16 @@ class FringeTestCase(lsst.utils.tests.TestCase):
         self.config.small = 1
         self.config.large = 128
         self.config.pedestal = False
+        self.config.iterations = 10
         afwImageUtils.defineFilter('FILTER', lambdaEff=0)
 
     def tearDown(self):
         afwImageUtils.resetFilters()
+
+        try:
+            del self.config
+        except Exception:
+            pass
 
     def checkFringe(self, task, exp, fringes, stddevMax):
         """Run fringe subtraction and verify
@@ -241,6 +248,14 @@ class FringeTestCase(lsst.utils.tests.TestCase):
 
         result = task.readFringes(dataRef, assembler=None)
         assert result
+
+# This triggers errors when built, but not when run with pdb.
+#    def test_readFringesAndAssemble(self):
+#        task = FringeTask()
+#        altDataRef = mock.AltDataRefMock()
+#        assembler = AssembleCcdTask()
+#        result = task.readFringes(altDataRef, assembler=assembler)
+#        assert result
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

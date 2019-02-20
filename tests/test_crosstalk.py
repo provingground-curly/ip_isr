@@ -35,7 +35,7 @@ import lsst.afw.cameraGeom
 from lsst.afw.table import LL, LR, UL, UR
 from lsst.pipe.base import Struct
 from lsst.ip.isr import (IsrTask, subtractCrosstalk, extractCrosstalkRatios, measureCrosstalkCoefficients,
-                         MeasureCrosstalkTask, writeCrosstalkCoeffs)
+                         MeasureCrosstalkTask, writeCrosstalkCoeffs, CrosstalkTask, NullCrosstalkTask)
 
 
 try:
@@ -213,26 +213,18 @@ class CrosstalkTestCase(lsst.utils.tests.TestCase):
         isr = IsrTask(config=config)
         isr.crosstalk.run(self.exposure)
         self.checkSubtracted(self.exposure)
-    #
-    # def testMeasureCrosstalkTask(self):
-    #     """Test that MeasureCrosstalkTask works
-    #
-    #     To fully test this task, a real inputDir is needed.
-    #     """
-    #     outPath = (tempfile.mkdtemp() if outputName is None
-    #                else "{}-isrMeasureCrosstalkTask".format(outputName))
-    #     outFile = outPath + "coeff"
-    #     outDump = outPath + "ratios"
-    #     dataId = dict(visit=1)
-    #     dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
-    #     parseRunResult = MeasureCrosstalkTask.parseAndRun(
-    #         args=[inputDir, "--output", outPath, "--outputFileName", outFile, "--clobber-config",
-    #               "--doraise", "--crosstalkName", "TaskApiCrosstalk", "--dump-ratios", outDump,
-    #               "--id"] +
-    #         dataIdStrList + ["--config", "isr.doDark=False"],
-    #         doReturnResults=True
-    #     )
-    #     assert parseRunResult
+
+    def test_prepCrosstalk(self):
+        dataRef = Struct(dataId={'fake': 1})
+        task = CrosstalkTask()
+        result = task.prepCrosstalk(dataRef)
+        assert result is None
+
+    def test_nullCrosstalkTask(self):
+        exposure = self.exposure
+        task = NullCrosstalkTask()
+        result = task.run(exposure, crosstalkSources=None)
+        assert result is None
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

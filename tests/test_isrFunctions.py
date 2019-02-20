@@ -188,22 +188,21 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
         ampI = inputExp.maskedImage[amp.getRawDataBBox()]
         overscanI = inputExp.maskedImage[amp.getRawHorizontalOverscanBBox()]
 
-        for fitType in ('MEAN', 'MEDIAN', 'MEANCLIP', 'POLY', 'CHEB', 'NATURAL_SPLINE', 'UNKNOWN'):
+        for fitType in ('MEAN', 'MEDIAN', 'MEANCLIP', 'POLY', 'CHEB',
+                        'NATURAL_SPLINE', 'CUBIC_SPLINE', 'UNKNOWN'):
+            order = 1
+            if fitType in ('NATURAL_SPLINE', 'CUBIC_SPLINE'):
+                order = 3
             for overscanIsInt in (True, False):
                 with self.subTest(fitType=fitType, overscanIsInt=overscanIsInt):
                     if fitType == 'UNKNOWN':
                         with self.assertRaises(pexExcept.Exception):
                             ipIsr.overscanCorrection(ampI, overscanI, fitType=fitType,
-                                                     order=1, collapseRej=3.0,
-                                                     statControl=None, overscanIsInt=overscanIsInt)
-                    elif fitType == 'NATURAL_SPLINE':
-                        with self.assertRaises(pexExcept.OutOfRangeError):
-                            ipIsr.overscanCorrection(ampI, overscanI, fitType=fitType,
-                                                     order=1, collapseRej=3.0,
+                                                     order=order, collapseRej=3.0,
                                                      statControl=None, overscanIsInt=overscanIsInt)
                     else:
                         response = ipIsr.overscanCorrection(ampI, overscanI, fitType=fitType,
-                                                            order=1, collapseRej=3.0,
+                                                            order=order, collapseRej=3.0,
                                                             statControl=None, overscanIsInt=overscanIsInt)
                         assert response
 
