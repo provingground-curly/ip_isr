@@ -994,7 +994,8 @@ def applyGains(exposure, normalizeGains=False):
         median = numpy.median(numpy.array(medians))
         for index, amp in enumerate(ccd):
             sim = ccdImage.Factory(ccdImage, amp.getBBox())
-            sim *= median/medians[index]
+            if medians[index] != 0.0:
+                sim *= median/medians[index]
 
 
 def widenSaturationTrails(mask):
