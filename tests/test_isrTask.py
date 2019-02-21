@@ -111,97 +111,86 @@ class IsrTaskTestCases(lsst.utils.tests.TestCase):
                 with self.task.flatContext(self.inputExp, flatExp, dark):
                     assert True
 
-    def testIsrWrapperTask(self):
-        #        outPath = tempfile.mkdtemp() if outputName is None else "{}-isrTask".format(outputName)
-        #        dataId = dict(visit=3)
-        #        dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
-        #        fullResult = IsrWrapperTask.parseAndRun(
-        #            args=[inputDir, "--output", outPath, "--clobber-config", "--doraise",
-        #                  "--id"] + dataIdStrList + ["--config", "isr.doAddDistortionModel=False"],
-        #            doReturnResults=True
-        #        )
-        #        assert fulResult
-        assert True
 
+class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
 
-# class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
+    def setUp(self):
+        self.config = IsrTaskConfig()
+        self.config.qa = IsrQaConfig()
+        self.task = IsrTask(config=self.config)
 
-#     def setUp(self):
-#         self.config = IsrTaskConfig()
-#         self.config.qa = IsrQaConfig()
-#         self.task = IsrTask(config=self.config)
-#         self.dataRef = isrMock.DataRefMock()
-#         self.camera = isrMock.IsrMock().getCamera()
+        self.mockConfig = isrMock.IsrMockConfig()
+        self.mockConfig.isTrimmed = False
+        self.dataRef = isrMock.DataRefMock(config=self.mockConfig)
+        self.camera = isrMock.IsrMock(config=self.mockConfig).getCamera()
 
-#         self.inputExp = isrMock.RawMock().mock()
-#         self.amp = self.inputExp.getDetector()[0]
-#         self.mi = self.inputExp.getMaskedImage()
+        self.inputExp = isrMock.RawMock(config=self.mockConfig).mock()
+        self.amp = self.inputExp.getDetector()[0]
+        self.mi = self.inputExp.getMaskedImage()
 
-#     def tearDown(self):
-#         pass
+    def tearDown(self):
+        pass
 
-#     def test_runDataRef(self):
-#         self.config.doLinearize = False
-#         self.task = IsrTask(config=self.config)
+    def test_runDataRef(self):
+        self.config.doLinearize = False
+        self.config.doWrite = False
+        self.task = IsrTask(config=self.config)
 
-#         assert self.task.runDataRef(self.dataRef)
+        assert self.task.runDataRef(self.dataRef)
 
-#     def test_run(self):
-#         self.config.qa.flatness.meshX = 20
-#         self.config.qa.flatness.meshY = 20
+    def test_run(self):
+        self.config.qa.flatness.meshX = 20
+        self.config.qa.flatness.meshY = 20
+        self.config.doWrite = False
+        self.config.doLinearize = False
+        for doTheThing in (True, False):
+            with self.subTest(doTheThing=doTheThing):
+                self.config.doConvertIntToFloat = doTheThing
+                self.config.doSaturation = doTheThing
+                self.config.doSuspect = doTheThing
+                self.config.doSetBadRegions = doTheThing
+                self.config.doOverscan = doTheThing
+                self.config.doBias = doTheThing
+                self.config.doVariance = doTheThing
+                self.config.doWidenSaturationTrails = doTheThing
+                self.config.doBrighterFatter = doTheThing
+                self.config.doDefect = doTheThing
+                self.config.doSaturationInterpolation = doTheThing
+                self.config.doDark = doTheThing
+                self.config.doStrayLight = doTheThing
+                self.config.doFlat = doTheThing
+                self.config.doFringe = doTheThing
+                self.config.doAddDistortionModel = doTheThing
+                self.config.doMeasureBackground = doTheThing
+                self.config.doVignette = doTheThing
+                self.config.doAttachTransmissionCurve = doTheThing
+                self.config.doUseOpticsTransmission = doTheThing
+                self.config.doUseFilterTransmission = doTheThing
+                self.config.doUseSensorTransmission = doTheThing
+                self.config.doUseAtmosphereTransmission = doTheThing
+                self.config.qa.saveStats = doTheThing
+                self.config.qa.doThumbnailOss = doTheThing
+                self.config.qa.doThumbnailFlattened = doTheThing
 
-#         self.config.doLinearize = False
-#         for doTheThing in (True, False):
-#             with self.subTest(doTheThing=doTheThing):
-#                 self.config.doConvertIntToFloat = doTheThing
-#                 self.config.doSaturation = doTheThing
-#                 self.config.doSuspect = doTheThing
-#                 self.config.doSetBadRegions = doTheThing
-#                 self.config.doOverscan = doTheThing
-#                 self.config.doBias = doTheThing
-#                 self.config.doVariance = doTheThing
-#                 self.config.doWidenSaturationTrails = doTheThing
-#                 self.config.doBrighterFatter = doTheThing
-#                 self.config.doDefect = doTheThing
-#                 self.config.doSaturationInterpolation = doTheThing
-#                 self.config.doDark = doTheThing
-#                 self.config.doStrayLight = doTheThing
-#                 self.config.doFlat = doTheThing
-#                 self.config.doFringe = doTheThing
-#                 self.config.doAddDistortionModel = doTheThing
-#                 self.config.doMeasureBackground = doTheThing
-#                 self.config.doVignette = doTheThing
-#                 self.config.doAttachTransmissionCurve = doTheThing
-#                 self.config.doUseOpticsTransmission = doTheThing
-#                 self.config.doUseFilterTransmission = doTheThing
-#                 self.config.doUseSensorTransmission = doTheThing
-#                 self.config.doUseAtmosphereTransmission = doTheThing
-#                 self.config.qa.saveStats = doTheThing
-#                 self.config.qa.doThumbnailOss = doTheThing
-#                 self.config.qa.doThumbnailFlattened = doTheThing
+                self.config.doApplyGains = not doTheThing
+                self.config.doCameraSpecificMasking = doTheThing
+                self.config.vignette.doWriteVignettePolygon = doTheThing
 
-# #                self.config.doCrosstalk = doTheThing
-# #                self.config.doCrosstalkBeforeAssemble = doTheThing
-#                 self.config.doApplyGains = not doTheThing
-#                 self.config.doCameraSpecificMasking = doTheThing
-#                 self.config.vignette.doWriteVignettePolygon = doTheThing
-
-#                 self.task = IsrTask(config=self.config)
-#                 #  self.dataRef.get("defects"),
-#                 results = self.task.run(self.inputExp,
-#                                         camera=self.camera,
-#                                         bias=self.dataRef.get("bias"),
-#                                         dark=self.dataRef.get("dark"),
-#                                         flat=self.dataRef.get("flat"),
-#                                         bfKernel=self.dataRef.get("bfKernel"),
-#                                         defects=self.dataRef.get("defects"),
-#                                         fringes=self.dataRef.get("fringes"),
-#                                         opticsTransmission=self.dataRef.get("transmission_"),
-#                                         filterTransmission=self.dataRef.get("transmission_"),
-#                                         sensorTransmission=self.dataRef.get("transmission_"),
-#                                         atmosphereTransmission=self.dataRef.get("transmission_")
-#                                         )
-#                 assert results
+                self.task = IsrTask(config=self.config)
+                results = self.task.run(self.inputExp,
+                                        camera=self.camera,
+                                        bias=self.dataRef.get("bias"),
+                                        dark=self.dataRef.get("dark"),
+                                        flat=self.dataRef.get("flat"),
+                                        bfKernel=self.dataRef.get("bfKernel"),
+                                        defects=self.dataRef.get("defects"),
+                                        fringes=self.dataRef.get("fringes"),
+                                        opticsTransmission=self.dataRef.get("transmission_"),
+                                        filterTransmission=self.dataRef.get("transmission_"),
+                                        sensorTransmission=self.dataRef.get("transmission_"),
+                                        atmosphereTransmission=self.dataRef.get("transmission_")
+                                        )
+                assert results
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
