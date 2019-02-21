@@ -31,13 +31,13 @@ import numpy as np
 import lsst.utils.tests
 import lsst.ip.isr.isrQa as isrQa
 # import lsst.pex.exceptions as pexExcept
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 
 
 class IsrQaCases(lsst.utils.tests.TestCase):
 
     def setUp(self):
-        self.inputExp = mock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().mock()
         self.mi = self.inputExp.getMaskedImage()
         self.config = isrQa.IsrQaConfig()
 
@@ -54,7 +54,7 @@ class IsrQaCases(lsst.utils.tests.TestCase):
         assert np.nonzero(thumb)
 
     def test_writeThumbnail(self):
-        dataRef = mock.DataRefMock()
+        dataRef = isrMock.DataRefMock()
         thumb = isrQa.makeThumbnail(self.inputExp, self.config)
 
         isrQa.writeThumbnail(dataRef, thumb, "thumbnail")

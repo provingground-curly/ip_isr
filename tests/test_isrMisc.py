@@ -33,13 +33,13 @@ import lsst.ip.isr.vignette as vignette
 import lsst.ip.isr.masking as masking
 import lsst.ip.isr.linearize as linearize
 
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 
 
 class IsrMiscCases(lsst.utils.tests.TestCase):
 
     def setUp(self):
-        self.inputExp = mock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().mock()
         self.mi = self.inputExp.getMaskedImage()
 
     def tearDown(self):

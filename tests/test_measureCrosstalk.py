@@ -26,7 +26,7 @@ import unittest
 
 import lsst.utils.tests
 from lsst.ip.isr.measureCrosstalk import (MeasureCrosstalkTask)
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 outputName = None  # specify a name (as a string) to save the output repository
 
 
@@ -42,7 +42,7 @@ class MeasureCrosstalkTaskCases(lsst.utils.tests.TestCase):
         # dataIdStrList,
         #            doReturnResults=True
         #        )
-        exposure = mock.TrimmedRawMock().mock()
+        exposure = isrMock.TrimmedRawMock().mock()
         mct = MeasureCrosstalkTask()
         fullResult = mct.run(exposure, dataId=None)
         assert fullResult

@@ -30,7 +30,7 @@ import lsst.afw.display.ds9 as ds9
 import lsst.afw.image.utils as afwImageUtils
 from lsst.ip.isr.fringe import FringeTask
 
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 
 try:
     debug
@@ -244,7 +244,7 @@ class FringeTestCase(lsst.utils.tests.TestCase):
 
     def test_readFringes(self):
         task = FringeTask()
-        dataRef = mock.DataRefMock()
+        dataRef = isrMock.DataRefMock()
 
         result = task.readFringes(dataRef, assembler=None)
         assert result
@@ -252,7 +252,7 @@ class FringeTestCase(lsst.utils.tests.TestCase):
 # This triggers errors when built, but not when run with pdb.
 #    def test_readFringesAndAssemble(self):
 #        task = FringeTask()
-#        altDataRef = mock.AltDataRefMock()
+#        altDataRef = isrMock.AltDataRefMock()
 #        assembler = AssembleCcdTask()
 #        result = task.readFringes(altDataRef, assembler=assembler)
 #        assert result

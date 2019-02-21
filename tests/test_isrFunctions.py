@@ -31,13 +31,13 @@ import lsst.afw.image as afwImage
 import lsst.utils.tests
 import lsst.ip.isr as ipIsr
 import lsst.pex.exceptions as pexExcept
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 
 
 class IsrFunctionsCases(lsst.utils.tests.TestCase):
 
     def setUp(self):
-        self.inputExp = mock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().mock()
         self.mi = self.inputExp.getMaskedImage()
 
     def tearDown(self):
@@ -48,7 +48,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
         assert transposed
 
     def test_interpolateDefectList(self):
-        defectList = mock.DefectMock().mock()
+        defectList = isrMock.DefectMock().mock()
 
         for fallbackValue in (None, -999.0):
             for haveMask in (True, False):
@@ -64,7 +64,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
         assert output
 
     def test_transposeDefectList(self):
-        defectList = mock.DefectMock().mock()
+        defectList = isrMock.DefectMock().mock()
 
         transposed = ipIsr.transposeDefectList(defectList)
 
@@ -97,7 +97,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
     def test_trimToMatchCalibBBox(self):
         # It would be nice to be able to test that this fails in the way it should if the
         # trim isn't symmetric.
-        darkExp = mock.DarkMock().mock()
+        darkExp = isrMock.DarkMock().mock()
         darkMi = darkExp.getMaskedImage()
 
         nEdge = 2
@@ -112,7 +112,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
 #        afwGeom.testUtils.assertBoxesAlmostEqual(self, newInput.getBBox(), self.mi.getBBox())
 
     def test_darkCorrection(self):
-        darkExp = mock.DarkMock().mock()
+        darkExp = isrMock.DarkMock().mock()
         darkMi = darkExp.getMaskedImage()
 
         image = self.mi.getImage().getArray()
@@ -129,7 +129,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.darkCorrection(self.mi, darkMi, 1.0, 1.0, trimToFit=False)
 
     def test_biasCorrection(self):
-        biasExp = mock.BiasMock().mock()
+        biasExp = isrMock.BiasMock().mock()
         biasMi = biasExp.getMaskedImage()
 
         ipIsr.biasCorrection(self.mi, biasMi, trimToFit=True)
@@ -143,7 +143,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.biasCorrection(self.mi, biasMi, trimToFit=False)
 
     def test_flatCorrection(self):
-        flatExp = mock.FlatMock().mock()
+        flatExp = isrMock.FlatMock().mock()
         flatMi = flatExp.getMaskedImage()
 
         image = self.mi.getImage().getArray()
@@ -169,7 +169,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.flatCorrection(self.mi, flatMi, 'USER', userScale=1.0, trimToFit=False)
 
     def test_illumCorrection(self):
-        flatExp = mock.FlatMock().mock()
+        flatExp = isrMock.FlatMock().mock()
         flatMi = flatExp.getMaskedImage()
 
         ipIsr.illuminationCorrection(self.mi, flatMi, 1.0)
@@ -182,7 +182,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.illuminationCorrection(self.mi, flatMi, 1.0)
 
     def test_overscanCorrection(self):
-        inputExp = mock.RawMock().mock()
+        inputExp = isrMock.RawMock().mock()
 
         amp = inputExp.getDetector()[0]
         ampI = inputExp.maskedImage[amp.getRawDataBBox()]
@@ -207,7 +207,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                         assert response
 
     def test_brighterFatterCorrection(self):
-        bfKern = mock.BfKernelMock().mock()
+        bfKern = isrMock.BfKernelMock().mock()
 
         ipIsr.brighterFatterCorrection(self.inputExp, bfKern, 10, 1e-2, False)
 
@@ -218,7 +218,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                     pass
 
     def test_addDistortionModel(self):
-        camera = mock.IsrMock().getCamera()
+        camera = isrMock.IsrMock().getCamera()
         ipIsr.addDistortionModel(self.inputExp, camera)
 
         with self.assertRaises(RuntimeError):
@@ -253,7 +253,7 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                     assert value
 
     def test_attachTransmissionCurve(self):
-        curve = mock.TransmissionMock().mock()
+        curve = isrMock.TransmissionMock().mock()
         for tCurve in (None, curve):
             with self.subTest(tCurve=tCurve):
                 combined = ipIsr.attachTransmissionCurve(self.inputExp,

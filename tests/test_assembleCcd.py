@@ -24,7 +24,7 @@ import unittest
 
 import lsst.utils.tests
 from lsst.ip.isr.assembleCcdTask import (AssembleCcdConfig, AssembleCcdTask)
-import isr_mocks as mock
+import lsst.ip.isr.isrMock as isrMock
 
 
 class AssembleCcdCases(lsst.utils.tests.TestCase):
@@ -40,7 +40,7 @@ class AssembleCcdCases(lsst.utils.tests.TestCase):
             pass
 
     def testAssembleCcdTask_single(self):
-        inputExp = mock.RawMock().mock()
+        inputExp = isrMock.RawMock().mock()
 
         for doTrim in (True, False):
             with self.subTest(doTrim=doTrim):
@@ -51,7 +51,7 @@ class AssembleCcdCases(lsst.utils.tests.TestCase):
         assert assembleOutput
 
     def testAssembleCcdTask_dict(self):
-        inputExpDict = mock.RawDictMock().mock()
+        inputExpDict = isrMock.RawDictMock().mock()
 
         for doTrim in (True, False):
             with self.subTest(doTrim=doTrim):
