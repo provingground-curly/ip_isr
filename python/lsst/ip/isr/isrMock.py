@@ -202,11 +202,6 @@ class IsrMockConfig(pexConfig.Config):
         doc="Generate a dict of exposure amplifiers instead of an afwImage.Exposure.",
     )
 
-    def validate(self):
-        super().validate()
-        #        import pdb
-        #        pdb.set_trace()
-
 
 class IsrMock(pipeBase.Task):
     r"""Class to generate consistent mock images for ISR testing.
@@ -434,6 +429,7 @@ class IsrMock(pipeBase.Task):
         for amp in exposure.getDetector():
             amp.setLinearityCoeffs((0., 1., 0., 0.))
             amp.setLinearityType("Polynomial")
+            amp.setGain(self.config.gain)
         exposure.getImage().getArray()[:] = np.zeros(exposure.getImage().getDimensions()).transpose()
         exposure.getMask().getArray()[:] = np.zeros(exposure.getMask().getDimensions()).transpose()
         exposure.getVariance().getArray()[:] = np.zeros(exposure.getVariance().getDimensions()).transpose()
@@ -609,15 +605,12 @@ class IsrMock(pipeBase.Task):
             for y in range(0, ampData.getDimensions().getY()):
                 (u, v) = self.localCoordToExpCoord(amp, x, y)
                 f = np.exp(-0.5 * ((u - 100)**2 + (v - 100)**2)**2 / size**2)
-                if x == 0 and y == 0:
-                    print(f)
                 ampData.getArray()[y][x] = (ampData.getArray()[y][x] * f)
 
 
 class RawMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        #        print("RM: %s %s %s" % (self.ConfigClass, self.config, isinstance(self, IsrMock)))
         self.config.isTrimmed = False
         self.config.doGenerateImage = True
         self.config.doGenerateDict = False
@@ -633,7 +626,6 @@ class TrimmedRawMock(RawMock):
     def __init__(self, **kwargs):
 
         super().__init__(**kwargs)
-        #        print("TRM: %s" % (self._parentTask))
         self.config.isTrimmed = True
         self.config.doOverscan = False
 
@@ -641,15 +633,12 @@ class TrimmedRawMock(RawMock):
 class RawDictMock(RawMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        #        print("RDM: %s %s %s" % (self.ConfigClass, self.config, isinstance(self, IsrMock)))
-        #       print("     %s" % (isinstance(self.config, IsrMockConfig)))
         self.config.doGenerateDict = True
 
 
 class MasterMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        #        print("RM: %s" % (self._parentTask))
         self.config.isTrimmed = True
         self.config.doGenerateImage = True
         self.config.doOverscan = False
@@ -672,7 +661,6 @@ class BiasMock(MasterMock):
 
 class DarkMock(MasterMock):
     def __init__(self, **kwargs):
-        # CZW?
         super().__init__(**kwargs)
         self.config.doDark = True
         self.config.darkTime = 1.0
@@ -700,6 +688,7 @@ class BfKernelMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.config.doGenerateImage = False
         self.config.doGenerateData = True
         self.config.doBrighterFatter = True
         self.config.doDefects = False
@@ -711,6 +700,7 @@ class DefectMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.config.doGenerateImage = False
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = True
@@ -722,6 +712,7 @@ class CrosstalkCoeffMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.config.doGenerateImage = False
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = False
@@ -733,6 +724,7 @@ class TransmissionMock(IsrMock):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+        self.config.doGenerateImage = False
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = False
@@ -741,38 +733,42 @@ class TransmissionMock(IsrMock):
 
 
 class DataRefMock(object):
-
-    dataId = "My Fake Data"
+    dataId = "isrMock Fake Data"
     darkval = 2.  # e-/sec
     oscan = 250.  # DN
     gradient = .10
     exptime = 15  # seconds
     darkexptime = 40.  # seconds
 
+    def __init__(self, **kwargs):
+        if 'config' in kwargs.keys():
+            self.config = kwargs['config']
+        else:
+            self.config = None
+
     def get(self, dataType, **kwargs):
         if "_filename" in dataType:
             return tempfile.mktemp(), "mock"
         elif 'transmission_' in dataType:
-            return TransmissionMock().run()
+            return TransmissionMock(config=self.config).run()
         elif dataType == 'ccdExposureId':
             return 20090913
         elif dataType == 'camera':
-            return IsrMock().getCamera()
+            return IsrMock(config=self.config).getCamera()
         elif dataType == 'raw':
-            return RawMock().run()
+            return RawMock(config=self.config).run()
         elif dataType == 'bias':
-            print("GETTING BIAS!")
-            return BiasMock().run()
+            return BiasMock(config=self.config).run()
         elif dataType == 'dark':
-            return DarkMock().run()
+            return DarkMock(config=self.config).run()
         elif dataType == 'flat':
-            return FlatMock().run()
+            return FlatMock(config=self.config).run()
         elif dataType == 'fringe':
-            return FringeMock().run()
+            return FringeMock(config=self.config).run()
         elif dataType == 'defects':
-            return DefectMock().run()
+            return DefectMock(config=self.config).run()
         elif dataType == 'bfKernel':
-            return BfKernelMock().run()
+            return BfKernelMock(config=self.config).run()
         elif dataType == 'linearizer':
             return None
         elif dataType == 'crosstalkSources':
