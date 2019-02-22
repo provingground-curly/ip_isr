@@ -39,6 +39,14 @@ __all__ = ["IsrMockConfig", "IsrMock", "RawMock", "TrimmedRawMock", "RawDictMock
 
 
 class IsrMockConfig(pexConfig.Config):
+    r"""Configuration parameters for isrMock.
+
+    These parameters produce generic fixed position signals from
+    various sources, and combine them in a way that matches how those
+    signals are combined to create real data.  The camera used is the
+    test camera defined by the afwUtils code.
+    """
+    # Detector parameters.  "Exposure" parameters.
     isLsstLike = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -69,6 +77,8 @@ class IsrMockConfig(pexConfig.Config):
         default=5.0,
         doc="Exposure time for simulated data.",
     )
+
+    # Signal parameters
     skyLevel = pexConfig.Field(
         dtype=float,
         default=1000.0,
@@ -111,7 +121,7 @@ class IsrMockConfig(pexConfig.Config):
     )
     flatScale = pexConfig.Field(
         dtype=float,
-        default=1e5,
+        default=320.0,
         doc="Scale factor to apply to the flat dome.  Should not need to be so big.",
     )
     fringeScale = pexConfig.Field(
@@ -120,6 +130,7 @@ class IsrMockConfig(pexConfig.Config):
         doc="Scale factor to apply to the fringe ripple.",
     )
 
+    # Inclusion parameters
     doSky = pexConfig.Field(
         dtype=bool,
         default=True,
@@ -161,11 +172,7 @@ class IsrMockConfig(pexConfig.Config):
         doc="Add fringe signal to data.",
     )
 
-    doCrosstalk = pexConfig.Field(
-        dtype=bool,
-        default=False,
-        doc="Return/apply the crosstalk coefficients.",
-    )
+    # Datasets to create and return instead of generating an image.
     doTransmissionCurve = pexConfig.Field(
         dtype=bool,
         default=False,
@@ -215,32 +222,36 @@ class IsrMock(pipeBase.Task):
     ConfigClass = IsrMockConfig
     _DefaultName = "isrMock"
 
-    crosstalkCoeffs = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-                                [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
-
-    bfKernel = np.array([[1., 4., 7., 4., 1.],
-                         [4., 16., 26., 16., 4.],
-                         [7., 26., 41., 26., 7.],
-                         [4., 16., 26., 16., 4.],
-                         [1., 4., 7., 4., 1.]]) / 273.0
-    #    return (bfKernel, crosstalkCoeffs)
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        #        print("%s %s" % (self.ConfigClass, self.config))
-        #        print("IM: %s" % (self._parent))
         self.rng = np.random.RandomState(self.config.rngSeed)
+        self.crosstalkCoeffs = np.array([[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                                         [1e-2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]])
 
-    def mock(self):
-        return self.run()
+        self.bfKernel = np.array([[1., 4., 7., 4., 1.],
+                                  [4., 16., 26., 16., 4.],
+                                  [7., 26., 41., 26., 7.],
+                                  [4., 16., 26., 16., 4.],
+                                  [1., 4., 7., 4., 1.]]) / 273.0
 
     def run(self):
+        r"""Generate a mock ISR product, and return it.
+
+        Returns
+        -------
+        image : `lsst.afw.image.Exposure`
+            Simulated ISR image with signals added.
+        dataProduct :
+            Simulated ISR data products.
+        None :
+            Returned if no valid configuration was found.
+        """
         if self.config.doGenerateImage:
             return self.makeImage()
         elif self.config.doGenerateData:
@@ -249,6 +260,17 @@ class IsrMock(pipeBase.Task):
             return None
 
     def makeData(self):
+        r"""Generate simulated ISR data.
+
+        Currently, only the class defined crosstalk coefficient
+        matrix, brighter-fatter kernel, a constant unity transmission
+        curve, or a simple single-entry defect list can be generated.
+
+        Returns
+        -------
+        dataProduct :
+            Simulated ISR data product.
+        """
         if self.config.doBrighterFatter is True:
             return self.makeBfKernel()
         elif self.config.doDefects is True:
@@ -257,8 +279,6 @@ class IsrMock(pipeBase.Task):
             return self.makeTransmissionCurve()
         elif self.config.doCrosstalk is True:
             return self.crosstalkCoeffs
-        elif self.config.doDataRef is True:
-            return self.makeDataRef()
         else:
             return None
 
@@ -273,7 +293,7 @@ class IsrMock(pipeBase.Task):
         return self.bfKernel
 
     def makeDefectList(self):
-        r"""Generate a simple defect list.
+        r"""Generate a simple single-entry defect list.
 
         Returns
         -------
@@ -309,7 +329,37 @@ class IsrMock(pipeBase.Task):
         return afwImage.TransmissionCurve.makeIdentity()
 
     def makeImage(self):
-        # Construct the camera structure
+        r"""Generate a simulated ISR image.
+
+        Returns
+        -------
+        exposure : `lsst.afw.image.Exposure` or `dict`
+            Simulated ISR image data.
+
+        Notes
+        -----
+        This method currently constructs a "raw" data image by:
+            * Generating a simulated sky with noise
+            * Adding a single Gaussian "star"
+            * Adding a bias offset (and noise)
+            * Adding a overscan gradient parallel to the pixel y-axis
+            * Adding dark current (and noise)
+            * Multiplying the frame by the simulated flat
+            * Adding the fringe signal
+            * Simulating crosstalk by adding a scaled version of the
+              source amplifier to the target amplifiers.
+
+        The exposure with image data constructed this way is in one of
+        three formats.
+            * A single image, with overscan and prescan regions retained
+            * A single image, with overscan and prescan regions trimmed
+            * A `dict`, containing the amplifer data indexed by the
+              amplifier name.
+
+        To truly match the expected construction, crosstalk should be
+        added prior to the bias, nonlinearity prior to the dark, and
+        the brighter-fatter convolution prior to the flat.
+        """
         exposure = self.getExposure()
 
         for idx, amp in enumerate(exposure.getDetector()):
@@ -326,23 +376,24 @@ class IsrMock(pipeBase.Task):
             if self.config.doSource is True:
                 if idx == 0:
                     self.amplifierAddSource(ampData, self.config.sourceFlux)
-            # CT should be here, but it's a pain
+
             if self.config.doBias is True:
                 self.amplifierAddNoise(ampData, self.config.biasLevel, self.config.biasSigma)
+
             if self.config.doOverscan is True:
                 oscanBBox = amp.getRawHorizontalOverscanBBox()
                 oscanData = exposure.image[oscanBBox]
-                # self.amplifierAddNoise(oscanData, backgroundF, sigmaF)
+                self.amplifierAddNoise(oscanData, self.config.biasLevel, self.config.biasSigma)
 
                 self.amplifierAddYGradient(ampData, -1.0 * self.config.overscanScale,
                                            1.0 * self.config.overscanScale)
                 self.amplifierAddYGradient(oscanData, -1.0 * self.config.overscanScale,
                                            1.0 * self.config.overscanScale)
-            # Non-linearity should be here.  Also a pain.
+
             if self.config.doDark is True:
                 self.amplifierAddNoise(ampData, self.config.darkRate * self.config.darkTime,
                                        np.sqrt(self.config.darkRate * self.config.darkTime))
-            # Brighter fatter goes here.  Do it?
+
             if self.config.doFlat is True:
                 if ampData.getArray().sum() == 0.0:
                     self.amplifierAddNoise(ampData, 1.0, 0.0)
@@ -351,7 +402,6 @@ class IsrMock(pipeBase.Task):
             if self.config.doFringe is True:
                 self.amplifierAddFringe(amp, ampData, self.config.fringeScale)
 
-        # CT is less of a pain here
         if self.config.doCrosstalk is True:
             for idxS, ampS in enumerate(exposure.getDetector()):
                 for idxT, ampT in enumerate(exposure.getDetector()):
@@ -387,11 +437,9 @@ class IsrMock(pipeBase.Task):
     def getExposure(self):
         r"""Construct a test exposure.
 
-        Parameters
-        ----------
-        detectorIndex : int, optional
-            Index of the detector of the test camera to use.  The default
-            value of 20 uses a "standard" 2x4 array of amplifiers.
+        The test exposure has a simple WCS set, as well as a list of
+        unlikely header keywords that can be removed during ISR
+        processing to exercise that code.
 
         Returns
         -------
@@ -455,7 +503,6 @@ class IsrMock(pipeBase.Task):
                                   crval=afwGeom.SpherePoint(45.0, 45.0, afwGeom.degrees),
                                   cdMatrix=afwGeom.makeCdMatrix(scale=1.0*afwGeom.degrees))
 
-    # Convenience function to prevent me from getting coordinates wrong.
     def localCoordToExpCoord(self, amp, x, y):
         r"""Convert between a local amplifier coordinate and the full
         exposure coordinate.
@@ -494,6 +541,8 @@ class IsrMock(pipeBase.Task):
     def amplifierAddNoise(self, ampData, mean, sigma):
         r"""Add Gaussian noise to an amplifier's image data.
 
+         This method operates in the amplifier coordinate frame.
+
         Parameters
         ----------
         ampData : `lsst.afw.image.ImageF`
@@ -509,6 +558,8 @@ class IsrMock(pipeBase.Task):
 
     def amplifierAddYGradient(self, ampData, start, end):
         r"""Add a y-axis linear gradient to an amplifier's image data.
+
+         This method operates in the amplifier coordinate frame.
 
         Parameters
         ----------
@@ -527,6 +578,8 @@ class IsrMock(pipeBase.Task):
     def amplifierAddSource(self, ampData, scale):
         r"""Add a single Gaussian source to an amplifier.
 
+         This method operates in the amplifier coordinate frame.
+
         Parameters
         ----------
         ampData : `lsst.afw.image.ImageF`
@@ -540,7 +593,9 @@ class IsrMock(pipeBase.Task):
                                             scale * np.exp(-0.5 * ((x - 50)**2 + (y - 25)**2)**2 / 3.0**2))
 
     def amplifierAddCT(self, ampDataSource, ampDataTarget, scale):
-        r"""Add a scaled copy of an amplifier to another.
+        r"""Add a scaled copy of an amplifier to another, simulating crosstalk.
+
+         This method operates in the amplifier coordinate frame.
 
         Parameters
         ----------
@@ -575,7 +630,9 @@ class IsrMock(pipeBase.Task):
         -----
         This uses an offset sinc function to generate a ripple
         pattern.  True fringes have much finer structure, but this
-        pattern should be visually identifiable.
+        pattern should be visually identifiable.  The (x, y)
+        coordinates are in the frame of the amplifier, and (u, v) in
+        the frame of the full trimmed image.
         """
         for x in range(0, ampData.getDimensions().getX()):
             for y in range(0, ampData.getDimensions().getY()):
@@ -599,16 +656,20 @@ class IsrMock(pipeBase.Task):
         Notes
         -----
         This uses a centered 2-d Gaussian to simulate an illumination
-        pattern that falls off towards the edge of the detector.
+        pattern that falls off towards the edge of the detector.  The
+        e(x, y) coordinates are in the frame of the amplifier, and (u, v)
+        in the frame of the full trimmed image.
         """
         for x in range(0, ampData.getDimensions().getX()):
             for y in range(0, ampData.getDimensions().getY()):
                 (u, v) = self.localCoordToExpCoord(amp, x, y)
-                f = np.exp(-0.5 * ((u - 100)**2 + (v - 100)**2)**2 / size**2)
+                f = np.exp(-0.5 * ((u - 100)**2 + (v - 100)**2) / size**2)
                 ampData.getArray()[y][x] = (ampData.getArray()[y][x] * f)
 
 
 class RawMock(IsrMock):
+    r"""Generate a raw exposure suitable for ISR.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.isTrimmed = False
@@ -623,6 +684,8 @@ class RawMock(IsrMock):
 
 
 class TrimmedRawMock(RawMock):
+    r"""Generate a trimmed raw exposure.
+    """
     def __init__(self, **kwargs):
 
         super().__init__(**kwargs)
@@ -631,12 +694,16 @@ class TrimmedRawMock(RawMock):
 
 
 class RawDictMock(RawMock):
+    r"""Generate a raw exposure dict suitable for ISR.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.doGenerateDict = True
 
 
 class MasterMock(IsrMock):
+    r"""Parent class for those that make master calibrations.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.isTrimmed = True
@@ -653,6 +720,8 @@ class MasterMock(IsrMock):
 
 
 class BiasMock(MasterMock):
+    r"""Simulated master bias calibration.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.doBias = True
@@ -660,6 +729,8 @@ class BiasMock(MasterMock):
 
 
 class DarkMock(MasterMock):
+    r"""Simulated master dark calibration.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.doDark = True
@@ -667,24 +738,32 @@ class DarkMock(MasterMock):
 
 
 class FlatMock(MasterMock):
+    r"""Simulated master flat calibration.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.doFlat = True
 
 
 class FringeMock(MasterMock):
+    r"""Simulated master fringe calibration.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.doFringe = True
 
 
 class UntrimmedFringeMock(FringeMock):
+    r"""Simulated untrimmed master fringe calibration.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.config.isTrimmed = False
 
 
 class BfKernelMock(IsrMock):
+    r"""Simulated brighter-fatter kernel.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -697,6 +776,8 @@ class BfKernelMock(IsrMock):
 
 
 class DefectMock(IsrMock):
+    r"""Simulated defect list.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -709,6 +790,8 @@ class DefectMock(IsrMock):
 
 
 class CrosstalkCoeffMock(IsrMock):
+    r"""Simulated crosstalk coefficient matrix.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -721,6 +804,8 @@ class CrosstalkCoeffMock(IsrMock):
 
 
 class TransmissionMock(IsrMock):
+    r"""Simulated transmission curve.
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
@@ -733,6 +818,12 @@ class TransmissionMock(IsrMock):
 
 
 class DataRefMock(object):
+    r"""Simulated gen2 butler data ref.
+
+    Currently only supports get and put operations, which are most
+    likely to be called for data in ISR processing.
+
+    """
     dataId = "isrMock Fake Data"
     darkval = 2.  # e-/sec
     oscan = 250.  # DN
@@ -747,6 +838,18 @@ class DataRefMock(object):
             self.config = None
 
     def get(self, dataType, **kwargs):
+        r"""Return an appropriate data product.
+
+        Parameters
+        ----------
+        dataType : `str`
+            Type of data product to return.
+
+        Returns
+        -------
+        mock : IsrMock.run() result
+            The output product.
+        """
         if "_filename" in dataType:
             return tempfile.mktemp(), "mock"
         elif 'transmission_' in dataType:
@@ -777,4 +880,13 @@ class DataRefMock(object):
             return None
 
     def put(self, exposure, filename):
+        r"""Write an exposure to a FITS file.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Image data to write out.
+        filename : `str`
+            Base name of the output file.
+        """
         exposure.writeFits(filename+".fits")
