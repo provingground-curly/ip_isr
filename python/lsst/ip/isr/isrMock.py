@@ -32,7 +32,7 @@ import lsst.pipe.base as pipeBase
 
 
 __all__ = ["IsrMockConfig", "IsrMock", "RawMock", "TrimmedRawMock", "RawDictMock",
-           "MasterMock",
+           "CalibratedRawMock", "MasterMock",
            "BiasMock", "DarkMock", "FlatMock", "FringeMock", "UntrimmedFringeMock",
            "BfKernelMock", "DefectMock", "CrosstalkCoeffMock", "TransmissionMock",
            "DataRefMock"]
@@ -91,7 +91,7 @@ class IsrMockConfig(pexConfig.Config):
     )
     sourceFlux = pexConfig.Field(
         dtype=float,
-        default=35000.0,
+        default=45000.0,
         doc="Flux level (in DN) of a simulated 'astronomical source'.",
     )
     overscanScale = pexConfig.Field(
@@ -143,8 +143,8 @@ class IsrMockConfig(pexConfig.Config):
     )
     doCrosstalk = pexConfig.Field(
         dtype=bool,
-        default=True,
-        doc="Apply simulated crosstalk to output image.",
+        default=False,
+        doc="Apply simulated crosstalk to output image.  Not currently useful (det.hasCrosstalk()=False)",
     )
     doOverscan = pexConfig.Field(
         dtype=bool,
@@ -187,6 +187,11 @@ class IsrMockConfig(pexConfig.Config):
         dtype=bool,
         default=False,
         doc="Return a simulated Brighter-Fatter kernel.",
+    )
+    doCrosstalkCoeffs = pexConfig.Field(
+        dtype=bool,
+        default=False,
+        doc="Return the matrix of crosstalk coefficients.",
     )
     doDataRef = pexConfig.Field(
         dtype=bool,
@@ -277,7 +282,7 @@ class IsrMock(pipeBase.Task):
             return self.makeDefectList()
         elif self.config.doTransmissionCurve is True:
             return self.makeTransmissionCurve()
-        elif self.config.doCrosstalk is True:
+        elif self.config.doCrosstalkCoeffs is True:
             return self.crosstalkCoeffs
         else:
             return None
@@ -377,6 +382,42 @@ class IsrMock(pipeBase.Task):
                 if idx == 0:
                     self.amplifierAddSource(ampData, self.config.sourceFlux)
 
+            if self.config.doFringe is True:
+                self.amplifierAddFringe(amp, ampData, self.config.fringeScale)
+
+            if self.config.doFlat is True:
+                if ampData.getArray().sum() == 0.0:
+                    self.amplifierAddNoise(ampData, 1.0, 0.0)
+                self.amplifierAddFlat(amp, ampData, self.config.flatScale)
+
+            # CZW: Brighter fatter?
+
+            if self.config.doDark is True:
+                self.amplifierAddNoise(ampData, self.config.darkRate * self.config.darkTime,
+                                       np.sqrt(self.config.darkRate * self.config.darkTime))
+
+        # Non-linearity/CTE
+
+        if self.config.doCrosstalk is True:
+            for idxS, ampS in enumerate(exposure.getDetector()):
+                for idxT, ampT in enumerate(exposure.getDetector()):
+                    if self.config.isTrimmed is True:
+                        ampDataS = exposure.image[ampS.getBBox()]
+                        ampDataT = exposure.image[ampT.getBBox()]
+                    else:
+                        ampDataS = exposure.image[ampS.getRawDataBBox()]
+                        ampDataT = exposure.image[ampT.getRawDataBBox()]
+                    self.amplifierAddCT(ampDataS, ampDataT, self.crosstalkCoeffs[idxT][idxS])
+
+        for idx, amp in enumerate(exposure.getDetector()):
+            bbox = None
+            if self.config.isTrimmed is True:
+                bbox = amp.getBBox()
+            else:
+                bbox = amp.getRawDataBBox()
+
+            ampData = exposure.image[bbox]
+
             if self.config.doBias is True:
                 self.amplifierAddNoise(ampData, self.config.biasLevel, self.config.biasSigma)
 
@@ -389,29 +430,6 @@ class IsrMock(pipeBase.Task):
                                            1.0 * self.config.overscanScale)
                 self.amplifierAddYGradient(oscanData, -1.0 * self.config.overscanScale,
                                            1.0 * self.config.overscanScale)
-
-            if self.config.doDark is True:
-                self.amplifierAddNoise(ampData, self.config.darkRate * self.config.darkTime,
-                                       np.sqrt(self.config.darkRate * self.config.darkTime))
-
-            if self.config.doFlat is True:
-                if ampData.getArray().sum() == 0.0:
-                    self.amplifierAddNoise(ampData, 1.0, 0.0)
-
-                self.amplifierAddFlat(amp, ampData, self.config.flatScale)
-            if self.config.doFringe is True:
-                self.amplifierAddFringe(amp, ampData, self.config.fringeScale)
-
-        if self.config.doCrosstalk is True:
-            for idxS, ampS in enumerate(exposure.getDetector()):
-                for idxT, ampT in enumerate(exposure.getDetector()):
-                    if self.config.isTrimmed is True:
-                        ampDataS = exposure.image[ampS.getBBox()]
-                        ampDataT = exposure.image[ampT.getBBox()]
-                    else:
-                        ampDataS = exposure.image[ampS.getRawDataBBox()]
-                        ampDataT = exposure.image[ampT.getRawDataBBox()]
-                    self.amplifierAddCT(ampDataS, ampDataT, self.crosstalkCoeffs[idxT][idxS])
 
         if self.config.doGenerateDict is True:
             expDict = dict()
@@ -449,7 +467,6 @@ class IsrMock(pipeBase.Task):
         """
         camera = self.getCamera()
         detector = camera[self.config.detectorIndex]
-
         image = afwUtils.makeImageFromCcd(detector,
                                           isTrimmed=self.config.isTrimmed,
                                           showAmpGain=False,
@@ -478,6 +495,7 @@ class IsrMock(pipeBase.Task):
             amp.setLinearityCoeffs((0., 1., 0., 0.))
             amp.setLinearityType("Polynomial")
             amp.setGain(self.config.gain)
+
         exposure.getImage().getArray()[:] = np.zeros(exposure.getImage().getDimensions()).transpose()
         exposure.getMask().getArray()[:] = np.zeros(exposure.getMask().getDimensions()).transpose()
         exposure.getVariance().getArray()[:] = np.zeros(exposure.getVariance().getDimensions()).transpose()
@@ -678,7 +696,7 @@ class RawMock(IsrMock):
         self.config.doOverscan = True
         self.config.doSky = True
         self.config.doSource = True
-        self.config.doCrosstalk = True
+        self.config.doCrosstalk = False
         self.config.doBias = True
         self.config.doDark = True
 
@@ -691,6 +709,24 @@ class TrimmedRawMock(RawMock):
         super().__init__(**kwargs)
         self.config.isTrimmed = True
         self.config.doOverscan = False
+
+
+class CalibratedRawMock(RawMock):
+    r"""Generate a trimmed raw exposure.
+    """
+    def __init__(self, **kwargs):
+
+        super().__init__(**kwargs)
+        self.config.isTrimmed = True
+        self.config.doOverscan = False
+        self.config.doBias = True
+        self.config.doDark = False
+        self.config.doFlat = False
+        self.config.doFringe = False
+        self.config.doCrosstalk = True
+        self.config.biasLevel = 0.0
+        self.config.biasSigma = 0.0
+        self.config.skySigma = 100.0
 
 
 class RawDictMock(RawMock):
@@ -771,7 +807,7 @@ class BfKernelMock(IsrMock):
         self.config.doGenerateData = True
         self.config.doBrighterFatter = True
         self.config.doDefects = False
-        self.config.doCrosstalk = False
+        self.config.doCrosstalkCoeffs = False
         self.config.doTransmissionCurve = False
 
 
@@ -785,7 +821,7 @@ class DefectMock(IsrMock):
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = True
-        self.config.doCrosstalk = False
+        self.config.doCrosstalkCoeffs = False
         self.config.doTransmissionCurve = False
 
 
@@ -799,7 +835,7 @@ class CrosstalkCoeffMock(IsrMock):
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = False
-        self.config.doCrosstalk = True
+        self.config.doCrosstalkCoeffs = True
         self.config.doTransmissionCurve = False
 
 
@@ -813,7 +849,7 @@ class TransmissionMock(IsrMock):
         self.config.doGenerateData = True
         self.config.doBrighterFatter = False
         self.config.doDefects = False
-        self.config.doCrosstalk = False
+        self.config.doCrosstalkCoeffs = False
         self.config.doTransmissionCurve = True
 
 
