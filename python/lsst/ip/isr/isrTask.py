@@ -1509,6 +1509,8 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             limits.update({self.config.saturatedMaskName: amp.getSaturation()})
         if self.config.doSuspect and not badAmp:
             limits.update({self.config.suspectMaskName: amp.getSuspectLevel()})
+        if not math.isnan(self.config.saturation):
+            limits.update({self.config.saturatedMaskName: self.config.saturation})
 
         for maskName, maskThreshold in limits.items():
             if not math.isnan(maskThreshold):
