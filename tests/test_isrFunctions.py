@@ -21,34 +21,83 @@
 #
 
 import unittest
+import numpy as np
 
-
-# import lsst.meas.algorithms as measAlg
-
-# import lsst.afw.geom as afwGeom
 import lsst.afw.image as afwImage
-# from lsst.afw.image.testUtils import assertImagesAlmostEqual
 import lsst.utils.tests
 import lsst.ip.isr as ipIsr
 import lsst.pex.exceptions as pexExcept
 import lsst.ip.isr.isrMock as isrMock
 
 
-class IsrFunctionsCases(lsst.utils.tests.TestCase):
+def maskCountPixels(maskedImage, maskPlane):
+    r"""Function to count the number of masked pixels of a given type.
 
+    Parameters
+    ----------
+    maskedImage : `lsst.afw.image.MaskedImage`
+        Image to measure the mask on.
+    maskPlane : `str`
+        Name of the mask plane to count
+
+    Returns
+    -------
+    nMask : `int`
+        Number of masked pixels.
+    """
+    bitMask = maskedImage.getMask().getPlaneBitMask(maskPlane)
+    isBit = maskedImage.getMask().getArray() & bitMask > 0
+    numBit = np.sum(isBit)
+    print("%s %d %d\n" % (maskPlane, bitMask, numBit))
+    return numBit
+
+
+def imageMedianStd(image):
+    r"""Function to calculate median and std of image data.
+
+    Parameters
+    ----------
+    image : `lsst.afw.image.Image`
+        Image to measure statistics on.
+
+    Returns
+    -------
+    median : `float`
+        Image median.
+    std : `float`
+        Image stddev.
+    """
+    median = np.nanmedian(image.getArray())
+    std = np.nanstd(image.getArray())
+    print("ms: %f %f" % (median, std))
+    return (median, std)
+
+
+class IsrFunctionsCases(lsst.utils.tests.TestCase):
+    r"""Test functions for ISR produce expected outputs.
+    """
     def setUp(self):
-        self.inputExp = isrMock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().run()
         self.mi = self.inputExp.getMaskedImage()
 
     def tearDown(self):
         pass
 
     def test_transposeMaskedImage(self):
+        r"""Image transpose.
+
+        Expect height and width to be exchanged.
+        """
         transposed = ipIsr.transposeMaskedImage(self.mi)
-        assert transposed
+        self.assertEqual(transposed.getImage().getBBox().getHeight(), self.mi.getImage().getBBox().getWidth())
 
     def test_interpolateDefectList(self):
-        defectList = isrMock.DefectMock().mock()
+        r"""Defect interpolation.
+
+        Expect number of interpolated pixels to be non-zero.
+        """
+        defectList = isrMock.DefectMock().run()
+        assert len(defectList) > 0
 
         for fallbackValue in (None, -999.0):
             for haveMask in (True, False):
@@ -59,12 +108,15 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                     else:
                         if 'INTRP' not in self.mi.getMask().getMaskPlaneDict():
                             self.mi.getMask().addMaskPlane('INTRP')
-                    output = ipIsr.interpolateDefectList(self.mi, defectList,
-                                                         2.0, fallbackValue=fallbackValue)
-        assert output
+                    numBit = maskCountPixels(self.mi, "INTRP")
+                    self.assertGreaterEqual(numBit, 0)
 
     def test_transposeDefectList(self):
-        defectList = isrMock.DefectMock().mock()
+        r"""Transpose defect list.
+
+        Expect dimension values to flip.
+        """
+        defectList = isrMock.DefectMock().run()
 
         transposed = ipIsr.transposeDefectList(defectList)
 
@@ -73,31 +125,46 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             assert d.getBBox().getDimensions().getY() == t.getBBox().getDimensions().getX()
 
     def test_makeThresholdMask(self):
+        r"""Thresholding.
+
+        Expect list of defects to have elements.
+        """
         defectList = ipIsr.makeThresholdMask(self.mi, 200, growFootprints=2, maskName='SAT')
 
-        assert defectList
+        self.assertGreater(len(defectList), 0)
 
     def test_interpolateFromMask(self):
+        r"""Interpolate mask.
+
+        Expect number of interpolated pixels to be non-zero.
+        """
         ipIsr.makeThresholdMask(self.mi, 200, growFootprints=2, maskName='SAT')
         for growFootprints in (0, 2):
             with self.subTest(growFootprints=growFootprints):
                 interpMaskedImage = ipIsr.interpolateFromMask(self.mi, 2.0,
                                                               growFootprints=growFootprints, maskName='SAT')
-
-        assert interpMaskedImage
+                numBit = maskCountPixels(interpMaskedImage, "INTRP")
+                self.assertGreaterEqual(numBit, 0)
 
     def test_saturationCorrection(self):
+        r"""Saturation correction.
+
+        Expect number of mask pixels with SAT marked to be non-zero.
+        """
         for interpolate in (True, False):
             with self.subTest(interpolate=interpolate):
                 corrMaskedImage = ipIsr.saturationCorrection(self.mi, 200, 2.0,
                                                              growFootprints=2, interpolate=interpolate,
                                                              maskName='SAT')
-        assert corrMaskedImage
+                numBit = maskCountPixels(corrMaskedImage, "SAT")
+                self.assertGreaterEqual(numBit, 0)
 
     def test_trimToMatchCalibBBox(self):
-        # It would be nice to be able to test that this fails in the way it should if the
-        # trim isn't symmetric.
-        darkExp = isrMock.DarkMock().mock()
+        r"""Trim to match raw data.
+
+        Expect bounding boxes to match.
+        """
+        darkExp = isrMock.DarkMock().run()
         darkMi = darkExp.getMaskedImage()
 
         nEdge = 2
@@ -105,14 +172,15 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
         darkMi = newDark
         newInput = ipIsr.trimToMatchCalibBBox(self.mi, darkMi)
 
-        # I broke this somehow, and I'm moving on because I want to get something done today.
-        assert newInput
-#       print( newInput.getBBox().getDimensions() , self.mi.getBBox().getDimensions())
-#        assert newInput.getBBox().getDimensions() == self.mi.getBBox().getDimensions()
-#        afwGeom.testUtils.assertBoxesAlmostEqual(self, newInput.getBBox(), self.mi.getBBox())
+        self.assertEqual(newInput.getImage().getBBox(), newDark.getImage().getBBox())
 
     def test_darkCorrection(self):
-        darkExp = isrMock.DarkMock().mock()
+        r"""Dark correction.
+
+        Expect round-trip application to be equal.
+        Expect RuntimeError if sizes are different.
+        """
+        darkExp = isrMock.DarkMock().run()
         darkMi = darkExp.getMaskedImage()
 
         image = self.mi.getImage().getArray()
@@ -129,7 +197,12 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.darkCorrection(self.mi, darkMi, 1.0, 1.0, trimToFit=False)
 
     def test_biasCorrection(self):
-        biasExp = isrMock.BiasMock().mock()
+        r"""Bias correction.
+
+        Expect smaller median image value after.
+        Expect RuntimeError is sizes are different.
+        """
+        biasExp = isrMock.BiasMock().run()
         biasMi = biasExp.getMaskedImage()
 
         ipIsr.biasCorrection(self.mi, biasMi, trimToFit=True)
@@ -143,7 +216,12 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.biasCorrection(self.mi, biasMi, trimToFit=False)
 
     def test_flatCorrection(self):
-        flatExp = isrMock.FlatMock().mock()
+        r"""Flat correction.
+
+        Expect round-trip application to be equal
+        Expect RuntimeError if sizes are different.
+        """
+        flatExp = isrMock.FlatMock().run()
         flatMi = flatExp.getMaskedImage()
 
         image = self.mi.getImage().getArray()
@@ -169,7 +247,12 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.flatCorrection(self.mi, flatMi, 'USER', userScale=1.0, trimToFit=False)
 
     def test_illumCorrection(self):
-        flatExp = isrMock.FlatMock().mock()
+        r"""Illumination Correction.
+
+        Expect larger median value after.
+        Expect RuntimeError if sizes are different.
+        """
+        flatExp = isrMock.FlatMock().run()
         flatMi = flatExp.getMaskedImage()
 
         ipIsr.illuminationCorrection(self.mi, flatMi, 1.0)
@@ -182,7 +265,11 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.illuminationCorrection(self.mi, flatMi, 1.0)
 
     def test_overscanCorrection(self):
-        inputExp = isrMock.RawMock().mock()
+        r"""Overscan subtraction.
+
+        Expect smaller median/smaller std after.
+        """
+        inputExp = isrMock.RawMock().run()
 
         amp = inputExp.getDetector()[0]
         ampI = inputExp.maskedImage[amp.getRawDataBBox()]
@@ -207,17 +294,32 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                         assert response
 
     def test_brighterFatterCorrection(self):
-        bfKern = isrMock.BfKernelMock().mock()
+        r"""BF correction.
 
+        Expect smoother image/smaller std after.
+        """
+        bfKern = isrMock.BfKernelMock().run()
+
+        before = imageMedianStd(self.inputExp.getImage())
         ipIsr.brighterFatterCorrection(self.inputExp, bfKern, 10, 1e-2, False)
+        after = imageMedianStd(self.inputExp.getImage())
+
+        self.assertLess(after[1], before[1])
 
     def test_gainContext(self):
+        r"""Gain context manager
+
+        """
         for apply in (True, False):
             with self.subTest(apply=apply):
                 with ipIsr.gainContext(self.inputExp, self.inputExp.getImage(), apply=apply):
                     pass
 
     def test_addDistortionModel(self):
+        r"""Add distortion models.
+
+        Expect RuntimeError if no model supplied, or incomplete exposure information.
+        """
         camera = isrMock.IsrMock().getCamera()
         ipIsr.addDistortionModel(self.inputExp, camera)
 
@@ -231,18 +333,34 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
             ipIsr.addDistortionModel(self.inputExp, camera)
 
     def test_applyGains(self):
+        r"""Apply gains.
+
+        """
         for normalizeGains in (True, False):
             with self.subTest(normalizeGains=normalizeGains):
                 ipIsr.applyGains(self.inputExp, normalizeGains=normalizeGains)
 
     def test_widenSaturationTrails(self):
-        defectList = ipIsr.makeThresholdMask(self.mi, 200, growFootprints=0, maskName='SAT')
+        r"""Widen saturation trails.
 
-        assert defectList
+        Expect more mask pixels with SAT set after.
+        """
+        defectList = ipIsr.makeThresholdMask(self.mi, 200, growFootprints=0, maskName='SAT')
+        numBitBefore = maskCountPixels(self.mi, "SAT")
+
+        assert len(defectList) > 0
 
         ipIsr.widenSaturationTrails(self.mi.getMask())
+        numBitAfter = maskCountPixels(self.mi, "SAT")
+
+        self.assertGreaterEqual(numBitAfter, numBitBefore)
 
     def test_setBadRegions(self):
+        r"""Bad regions.
+
+        Expect RuntimeError if improper statistic given.
+        Expect a float value otherwise.
+        """
         for badStatistic in ('MEDIAN', 'MEANCLIP', 'UNKNOWN'):
             with self.subTest(badStatistic=badStatistic):
                 if badStatistic == 'UNKNOWN':
@@ -250,10 +368,13 @@ class IsrFunctionsCases(lsst.utils.tests.TestCase):
                         nBad, value = ipIsr.setBadRegions(self.inputExp, badStatistic=badStatistic)
                 else:
                     nBad, value = ipIsr.setBadRegions(self.inputExp, badStatistic=badStatistic)
-                    assert value
+                    self.assertGreaterEqual(abs(value), 0.0)
 
     def test_attachTransmissionCurve(self):
-        curve = isrMock.TransmissionMock().mock()
+        r"""Transmission curves.
+
+        """
+        curve = isrMock.TransmissionMock().run()
         for tCurve in (None, curve):
             with self.subTest(tCurve=tCurve):
                 combined = ipIsr.attachTransmissionCurve(self.inputExp,

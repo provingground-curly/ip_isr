@@ -39,7 +39,7 @@ import lsst.ip.isr.isrMock as isrMock
 class IsrMiscCases(lsst.utils.tests.TestCase):
 
     def setUp(self):
-        self.inputExp = isrMock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().run()
         self.mi = self.inputExp.getMaskedImage()
 
     def tearDown(self):

@@ -30,8 +30,10 @@ import lsst.ip.isr.isrMock as isrMock
 
 
 class IsrMockCases(lsst.utils.tests.TestCase):
+    r"""Test the generation of IsrMock data.
+    """
     def setUp(self):
-        self.inputExp = isrMock.TrimmedRawMock().mock()
+        self.inputExp = isrMock.TrimmedRawMock().run()
         self.mi = self.inputExp.getMaskedImage()
 
     def tearDown(self):
@@ -42,7 +44,11 @@ class IsrMockCases(lsst.utils.tests.TestCase):
             pass
 
     def test_simple(self):
-        fringe = isrMock.FringeMock().mock()
+        r"""Chain raw and calibration mock data.
+
+        This test should confirm the raw data is generated as expected.
+        """
+        fringe = isrMock.FringeMock().run()
 
         initialMean = np.median(self.mi.getImage().getArray()[:])
         initialStd = np.std(self.mi.getImage().getArray()[:])
@@ -58,7 +64,7 @@ class IsrMockCases(lsst.utils.tests.TestCase):
         initialMean = newMean
         initialStd = newStd
 
-        flat = isrMock.FlatMock().mock()
+        flat = isrMock.FlatMock().run()
 
         self.mi.getImage().getArray()[:] = (self.mi.getImage().getArray()[:] -
                                             flat.getMaskedImage().getImage().getArray()[:])
@@ -68,12 +74,12 @@ class IsrMockCases(lsst.utils.tests.TestCase):
         self.assertAlmostEqual(newMean, initialMean, -2)
         self.assertLess(newStd, initialStd)
 
-        dark = isrMock.DarkMock().mock()
+        dark = isrMock.DarkMock().run()
 
         initialMean = newMean
         initialStd = newStd
 
-        flat = isrMock.FlatMock().mock()
+        flat = isrMock.FlatMock().run()
 
         self.mi.getImage().getArray()[:] = (self.mi.getImage().getArray()[:] -
                                             dark.getMaskedImage().getImage().getArray()[:])
@@ -82,12 +88,12 @@ class IsrMockCases(lsst.utils.tests.TestCase):
 
         self.assertLess(newMean, initialMean)
 
-        bias = isrMock.BiasMock().mock()
+        bias = isrMock.BiasMock().run()
 
         initialMean = newMean
         initialStd = newStd
 
-        flat = isrMock.FlatMock().mock()
+        flat = isrMock.FlatMock().run()
 
         self.mi.getImage().getArray()[:] = (self.mi.getImage().getArray()[:] -
                                             bias.getMaskedImage().getImage().getArray()[:])
@@ -97,8 +103,10 @@ class IsrMockCases(lsst.utils.tests.TestCase):
         self.assertLess(newMean, initialMean)
 
     def test_untrimmedSimple(self):
-        exposure = isrMock.RawMock().mock()
-        fringe = isrMock.UntrimmedFringeMock().mock()
+        r"""Confirm untrimmed data classes are generated consistently.
+        """
+        exposure = isrMock.RawMock().run()
+        fringe = isrMock.UntrimmedFringeMock().run()
 
         initialStd = np.std(exposure.getMaskedImage().getImage().getArray()[:])
 
@@ -110,20 +118,24 @@ class IsrMockCases(lsst.utils.tests.TestCase):
         self.assertLess(newStd, initialStd)
 
     def test_productTypes(self):
-        assert isinstance(isrMock.BfKernelMock().mock(), np.ndarray)
-        assert isinstance(isrMock.CrosstalkCoeffMock().mock(), np.ndarray)
+        r"""Test non-image data is returned as the expected type.
+        """
+        assert isinstance(isrMock.BfKernelMock().run(), np.ndarray)
+        assert isinstance(isrMock.CrosstalkCoeffMock().run(), np.ndarray)
 
-        assert len(isrMock.DefectMock().mock()) > 0
-        assert isinstance(isrMock.DefectMock().mock()[0], lsst.meas.algorithms.Defect)
+        assert len(isrMock.DefectMock().run()) > 0
+        assert isinstance(isrMock.DefectMock().run()[0], lsst.meas.algorithms.Defect)
 
-        assert isinstance(isrMock.TransmissionMock().mock(), afwImage.TransmissionCurve)
+        assert isinstance(isrMock.TransmissionMock().run(), afwImage.TransmissionCurve)
 
     def test_edgeCases(self):
+        r"""Test that improperly specified configurations do not return data.
+        """
         config = isrMock.IsrMockConfig()
-        assert isrMock.IsrMock(config=config).mock() is None
+        assert isrMock.IsrMock(config=config).run() is None
 
         config.doGenerateData = True
-        assert isrMock.IsrMock(config=config).mock() is None
+        assert isrMock.IsrMock(config=config).run() is None
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

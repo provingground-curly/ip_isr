@@ -23,9 +23,10 @@
 # import os
 import unittest
 # import tempfile
+import numpy as np
 
 import lsst.utils.tests
-from lsst.ip.isr.measureCrosstalk import (MeasureCrosstalkTask)
+from lsst.ip.isr.measureCrosstalk import (MeasureCrosstalkTask, MeasureCrosstalkConfig)
 import lsst.ip.isr.isrMock as isrMock
 outputName = None  # specify a name (as a string) to save the output repository
 
@@ -33,19 +34,58 @@ outputName = None  # specify a name (as a string) to save the output repository
 class MeasureCrosstalkTaskCases(lsst.utils.tests.TestCase):
 
     def testMeasureCrosstalkTask_single(self):
-        #        outPath = tempfile.mkdtemp() if outputName is None
-        # else "{}-MeasureCrosstalkTask".format(outputName)
-        #        dataId = dict(visit=1202, ccd=56)
-        #        dataIdStrList = ["%s=%s" % (key, val) for key, val in dataId.items()]
-        #        fullResult = MeasureCrosstalkTask.parseAndRun(
-        #            args=[inputDir, "--output", outPath, "--clobber-config", "--doraise", "--id"] +
-        # dataIdStrList,
-        #            doReturnResults=True
-        #        )
-        exposure = isrMock.TrimmedRawMock().mock()
+        r"""Measure crosstalk from a sequence of image.
+        """
+        config = isrMock.IsrMockConfig()
+        config.rngSeed = 12345
+        config.doCrosstalk = True
+
         mct = MeasureCrosstalkTask()
-        fullResult = mct.run(exposure, dataId=None)
-        assert fullResult
+        fullResult = []
+
+        for idx in range(0, 20):
+            config.rngSeed = 12345 + idx
+            exposure = isrMock.CalibratedRawMock(config=config).run()
+            exposure.writeFits("../czwMCT.fits")
+            result = mct.run(exposure, dataId=None)
+            fullResult.append(result)
+
+        coeff, coeffSig, coeffNum = mct.reduce(fullResult)
+
+        # Needed because measureCrosstalk cannot find coefficients equal to 0.0
+        coeff = np.nan_to_num(coeff)
+        coeffSig = np.nan_to_num(coeffSig)
+
+        expectation = isrMock.CrosstalkCoeffMock().run()
+        coeffErr = abs(coeff - expectation) <= coeffSig
+        assert np.all(coeffErr)
+
+    def testMeasureCrosstalkTask_trimmed(self):
+        r"""Measure crosstalk from a sequence of image.
+        """
+        config = isrMock.IsrMockConfig()
+        config.isTrimmed = False
+        config.rngSeed = 12345
+        config.doCrosstalk = True
+
+        mct = MeasureCrosstalkTask()
+        fullResult = []
+
+        for idx in range(0, 20):
+            config.rngSeed = 12345 + idx
+            exposure = isrMock.CalibratedRawMock(config=config).run()
+            result = mct.run(exposure, dataId=None)
+            fullResult.append(result)
+
+        coeff, coeffSig, coeffNum = mct.reduce(fullResult)
+
+        # Needed because measureCrosstalk cannot find coefficients equal to 0.0
+        coeff = np.nan_to_num(coeff)
+        coeffSig = np.nan_to_num(coeffSig)
+
+        expectation = isrMock.CrosstalkCoeffMock().run()
+        coeffErr = abs(coeff - expectation) <= coeffSig
+        assert np.all(coeffErr)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):

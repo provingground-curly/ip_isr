@@ -40,25 +40,27 @@ class AssembleCcdCases(lsst.utils.tests.TestCase):
             pass
 
     def testAssembleCcdTask_single(self):
-        inputExp = isrMock.RawMock().mock()
-
+        inputExp = isrMock.RawMock().run()
+        outputExp = isrMock.TrimmedRawMock().run()
         for doTrim in (True, False):
             with self.subTest(doTrim=doTrim):
                 self.config = AssembleCcdConfig(doTrim=doTrim, keysToRemove=['SHEEP', 'MONKEYS', 'ZSHEEP'])
                 self.task = AssembleCcdTask(config=self.config)
                 assembleOutput = self.task.assembleCcd(inputExp)
-
-        assert assembleOutput
+                if doTrim is True:
+                    self.assertEqual(assembleOutput.getBBox(), outputExp.getBBox())
 
     def testAssembleCcdTask_dict(self):
-        inputExpDict = isrMock.RawDictMock().mock()
-
+        inputExpDict = isrMock.RawDictMock().run()
+        outputExp = isrMock.TrimmedRawMock().run()
         for doTrim in (True, False):
             with self.subTest(doTrim=doTrim):
                 self.config = AssembleCcdConfig(doTrim=doTrim)
                 self.task = AssembleCcdTask(config=self.config)
                 assembleOutput = self.task.assembleCcd(inputExpDict)
-        assert assembleOutput
+                assert assembleOutput
+                if doTrim is True:
+                    self.assertEqual(assembleOutput.getBBox(), outputExp.getBBox())
 
     def testAssembleCcdTask_fail(self):
         inputExp = None
