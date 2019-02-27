@@ -26,7 +26,7 @@ import unittest
 import numpy as np
 
 import lsst.utils.tests
-from lsst.ip.isr.measureCrosstalk import (MeasureCrosstalkTask, MeasureCrosstalkConfig)
+from lsst.ip.isr.measureCrosstalk import (MeasureCrosstalkTask)
 import lsst.ip.isr.isrMock as isrMock
 outputName = None  # specify a name (as a string) to save the output repository
 

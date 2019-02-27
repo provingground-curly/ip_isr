@@ -414,7 +414,7 @@ class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
         for testIteration in range(0, 7):
             with self.subTest(testIteration=testIteration):
                 if testIteration >= 0:
-                    self.config.saturation = 1000.0
+                    self.config.saturation = 20000.0
                     self.config.doSaturation = True
                 elif testIteration >= 1:
                     self.config.doWidenSaturationTrails = True
