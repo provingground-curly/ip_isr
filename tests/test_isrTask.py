@@ -416,17 +416,17 @@ class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
                 if testIteration >= 0:
                     self.config.saturation = 20000.0
                     self.config.doSaturation = True
-                elif testIteration >= 1:
+                if testIteration >= 1:
                     self.config.doWidenSaturationTrails = True
-                elif testIteration >= 2:
+                if testIteration >= 2:
                     self.config.doSaturationInterpolation = True
-                elif testIteration >= 3:
+                if testIteration >= 3:
                     self.config.doSuspect = True
-                elif testIteration >= 4:
+                if testIteration >= 4:
                     self.config.numEdgeSuspect = 5
-                elif testIteration >= 5:
+                if testIteration >= 5:
                     self.config.doDefect = True
-                elif testIteration >= 6:
+                if testIteration >= 6:
                     self.config.doSetBadRegions = True
 
                 self.task = IsrTask(config=self.config)
@@ -444,32 +444,25 @@ class IsrTaskUnTrimmedTestCases(lsst.utils.tests.TestCase):
                                         sensorTransmission=self.dataRef.get("transmission_"),
                                         atmosphereTransmission=self.dataRef.get("transmission_")
                                         )
-                results.exposure.writeFits("../czw%d.fits" % (testIteration))
+
                 assert results
                 assert results.exposure
-                print("%d: %d %d %d %d" % (testIteration,
-                                           maskCountPixels(results.exposure, "SAT"),
-                                           maskCountPixels(results.exposure, "INTRP"),
-                                           maskCountPixels(results.exposure, "SUSPECT"),
-                                           maskCountPixels(results.exposure, "BAD")))
 
-                if testIteration >= 0:
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 0)
+                if testIteration == 0:
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 14)
                 if testIteration >= 1:
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 0)
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 13)
                 if testIteration >= 2:
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 0)
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "INTRP"), 0)
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 25)
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "INTRP"), 25)
                 if testIteration >= 3:
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SAT"), 0)
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "INTRP"), 0)
                     self.assertGreaterEqual(maskCountPixels(results.exposure, "SUSPECT"), 0)
-                elif testIteration >= 4:
+                if testIteration >= 4:
                     pass
-                elif testIteration >= 5:
-                    pass
-                elif testIteration >= 6:
-                    self.assertGreaterEqual(maskCountPixels(results.exposure, "BAD"), 0)
+                if testIteration >= 5:
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "SUSPECT"), 3940)
+                if testIteration >= 6:
+                    self.assertGreaterEqual(maskCountPixels(results.exposure, "BAD"), 2000)
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
