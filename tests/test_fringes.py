@@ -249,13 +249,18 @@ class FringeTestCase(lsst.utils.tests.TestCase):
         result = task.readFringes(dataRef, assembler=None)
         assert result
 
-# This triggers errors when built, but not when run with pdb.
-#    def test_readFringesAndAssemble(self):
-#        task = FringeTask()
-#        altDataRef = isrMock.AltDataRefMock()
-#        assembler = AssembleCcdTask()
-#        result = task.readFringes(altDataRef, assembler=assembler)
-#        assert result
+    def test_multiFringes(self):
+        print("Beginning test")
+        task = FringeTask()
+        dataRef = isrMock.FringeDataRefMock()
+
+        exp = dataRef.get("raw")
+        exp.writeFits("/project/czw/tmp/preMFringe.fits")
+        fringes = task.readFringes(dataRef, assembler=None)
+        task.run(exp, **fringes.getDict())
+        exp.writeFits("/project/czw/tmp/postMFringe.fits")
+
+        print("Ending test.")
 
 
 class MemoryTester(lsst.utils.tests.MemoryTestCase):
