@@ -38,6 +38,7 @@ class StrayLightTask(Task):
     This is a dummy task to be retargeted with an camera-specific version.
     """
     ConfigClass = StrayLightConfig
+    _DefaultName = "isrStrayLight"
 
     def run(self, exposure, **kwargs):
         """Correct stray light.
