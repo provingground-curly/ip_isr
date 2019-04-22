@@ -51,7 +51,7 @@ class IsrTestCases(lsst.utils.tests.TestCase):
         ipIsr.interpolateFromMask(
             maskedImage=maskedImage,
             fwhm=5.0,
-            growFootprints=1,
+            growSaturatedFootprints=1,
             maskName='SAT',
         )
 

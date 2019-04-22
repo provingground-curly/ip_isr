@@ -602,6 +602,33 @@ class IsrTaskConfig(pexConfig.Config):
         doc="Masking task."
     )
 
+    # Interpolation options.
+    doNanMasking = pexConfig.Field(
+        dtype=bool,
+        doc="Mask NAN pixels?",
+        default=True,
+    )
+    doNanInterp = pexConfig.Field(
+        dtype=bool,
+        doc="Interpolate NAN pixels?",
+        default=True,
+    )
+    doInterpolate = pexConfig.Field(
+        dtype=bool,
+        doc="Interpolate masked pixels?",
+        default=True,
+    )
+    maskListToInterpolate = pexConfig.ListField(
+        dtype=str,
+        doc="List of mask planes that should be interpolated.",
+        default=['SAT', 'BAD', 'UNMASKEDNAN'],
+    )
+    doSaveInterpPixels = pexConfig.Field(
+        dtype=bool,
+        doc="Save a copy of the pre-interpolated pixel values?",
+        default=False,
+    )
+
     # Default photometric calibration options.
     fluxMag0T1 = pexConfig.DictField(
         keytype=str,
@@ -1199,28 +1226,43 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.log.info("Widening saturation trails.")
             isrFunctions.widenSaturationTrails(ccdExposure.getMaskedImage().getMask())
 
-        interpolationDone = False
         if self.config.doBrighterFatter:
             # We need to apply flats and darks before we can interpolate, and we
             # need to interpolate before we do B-F, but we do B-F without the
             # flats and darks applied so we can work in units of electrons or holes.
             # This context manager applies and then removes the darks and flats.
-            with self.flatContext(ccdExposure, flat, dark):
+
+            interpExp = ccdExposure.clone()
+            with self.flatContext(interpExp, flat, dark):
                 if self.config.doDefect:
-                    self.maskAndInterpDefect(ccdExposure, defects)
+                    self.maskDefect(interpExp, defects)
 
                 if self.config.doSaturationInterpolation:
-                    self.saturationInterpolation(ccdExposure)
+                    pass
 
-                self.maskAndInterpNan(ccdExposure)
-                interpolationDone = True
+                if self.config.doNanInterp:
+                    self.maskNan(interpExp)
+
+                isrFunctions.interpolateFromMask(
+                    maskedImage=ccdExposure.getMaskedImage(),
+                    fwhm=self.config.fwhm,
+                    growSaturatedFootprints=self.config.growSaturationFootprintSize,
+                    maskName=self.config.maskListToInterpolate
+                )
+            bfExp = interpExp.clone()
 
             self.log.info("Applying brighter fatter correction.")
-            isrFunctions.brighterFatterCorrection(ccdExposure, bfKernel,
+            isrFunctions.brighterFatterCorrection(bfExp, bfKernel,
                                                   self.config.brighterFatterMaxIter,
                                                   self.config.brighterFatterThreshold,
                                                   self.config.brighterFatterApplyGain,
                                                   )
+            image = ccdExposure.getMaskedImage().getImage().getArray()
+            image += (bfExp.getMaskedImage().getImage().getArray() -
+                      interpExp.getMaskedImage().getImage().getArray())
+            # Necessary?
+            del interpExp
+            del bfExp
             self.debugView(ccdExposure, "doBrighterFatter")
 
         if self.config.doDark:
@@ -1247,36 +1289,24 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             self.log.info("Applying gain correction instead of flat.")
             isrFunctions.applyGains(ccdExposure, self.config.normalizeGains)
 
-        if self.config.doDefect and not interpolationDone:
-            self.log.info("Masking and interpolating defects.")
-            self.maskAndInterpDefect(ccdExposure, defects)
-
-        if self.config.doSaturationInterpolation and not interpolationDone:
-            self.log.info("Interpolating saturated pixels.")
-            self.saturationInterpolation(ccdExposure)
-
-        if self.config.doNanInterpAfterFlat or not interpolationDone:
-            self.log.info("Masking and interpolating NAN value pixels.")
-            self.maskAndInterpNan(ccdExposure)
-
-        if self.config.doFringe and self.config.fringeAfterFlat:
-            self.log.info("Applying fringe correction after flat.")
-            self.fringe.run(ccdExposure, **fringes.getDict())
-
-        if self.config.doSetBadRegions:
-            badPixelCount, badPixelValue = isrFunctions.setBadRegions(ccdExposure)
-            if badPixelCount > 0:
-                self.log.info("Set %d BAD pixels to %f." % (badPixelCount, badPixelValue))
-
-        flattenedThumb = None
-        if self.config.qa.doThumbnailFlattened:
-            flattenedThumb = isrQa.makeThumbnail(ccdExposure, isrQaConfig=self.config.qa)
-
+        # Begin masking block.
+        # Saturated and suspect pixels have already been masked.
         if self.config.doCameraSpecificMasking:
             self.log.info("Masking regions for camera specific reasons.")
             self.masking.run(ccdExposure)
 
-        self.roughZeroPoint(ccdExposure)
+        if self.config.doDefect:
+            self.log.info("Masking defects.")
+            self.maskDefect(ccdExposure, defects)
+
+        if self.config.doNanMasking:
+            self.log.info("Masking NAN value pixels.")
+            self.maskNan(ccdExposure)
+        # End masking block
+
+        if self.config.doFringe and self.config.fringeAfterFlat:
+            self.log.info("Applying fringe correction after flat.")
+            self.fringe.run(ccdExposure, **fringes.getDict())
 
         if self.config.doVignette:
             self.log.info("Constructing Vignette polygon.")
@@ -1295,6 +1325,30 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         if self.config.doAddDistortionModel:
             self.log.info("Adding a distortion model to the WCS.")
             isrFunctions.addDistortionModel(exposure=ccdExposure, camera=camera)
+
+        preInterpExp = None
+        if self.config.doSaveInterpPixels:
+            preInterpExp = ccdExposure.clone()
+
+        if self.config.doInterpolate:
+            isrFunctions.interpolateFromMask(
+                maskedImage=ccdExposure.getMaskedImage(),
+                fwhm=self.config.fwhm,
+                growSaturatedFootprints=self.config.growSaturationFootprintSize,
+                maskName=self.config.maskListToInterpolate
+            )
+
+        if self.config.doSetBadRegions:
+            # This is like an interpolation.
+            badPixelCount, badPixelValue = isrFunctions.setBadRegions(ccdExposure)
+            if badPixelCount > 0:
+                self.log.info("Set %d BAD pixels to %f." % (badPixelCount, badPixelValue))
+
+        flattenedThumb = None
+        if self.config.qa.doThumbnailFlattened:
+            flattenedThumb = isrQa.makeThumbnail(ccdExposure, isrQaConfig=self.config.qa)
+
+        self.roughZeroPoint(ccdExposure)
 
         if self.config.doMeasureBackground:
             self.log.info("Measuring background level:")
@@ -1320,6 +1374,7 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             ossThumb=ossThumb,
             flattenedThumb=flattenedThumb,
 
+            preInterpolatedExposure=preInterpExp,
             outputExposure=ccdExposure,
             outputOssThumbnail=ossThumb,
             outputFlattenedThumbnail=flattenedThumb,
@@ -1375,6 +1430,8 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             isrQa.writeThumbnail(sensorRef, result.ossThumb, "ossThumb")
         if result.flattenedThumb is not None:
             isrQa.writeThumbnail(sensorRef, result.flattenedThumb, "flattenedThumb")
+        if result.preInterpolatedExposure is not None:
+            sensorRef.put(result.preInterpolatedExposure, "postISRCCD_uninterpolated")
 
         return result
 
@@ -1865,7 +1922,7 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 maskName=self.config.saturatedMaskName,
             )
 
-    def saturationInterpolation(self, ccdExposure):
+    def saturationInterpolation(self, exposure):
         """!Interpolate over saturated pixels, in place.
 
         This method should be called after `saturationDetection`, to
@@ -1884,9 +1941,9 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         lsst.ip.isr.isrFunctions.interpolateFromMask
         """
         isrFunctions.interpolateFromMask(
-            maskedImage=ccdExposure.getMaskedImage(),
+            maskedImage=exposure.getMaskedImage(),
             fwhm=self.config.fwhm,
-            growFootprints=self.config.growSaturationFootprintSize,
+            growSaturatedFootprints=self.config.growSaturationFootprintSize,
             maskName=self.config.saturatedMaskName,
         )
 
@@ -1925,12 +1982,12 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
             maskName=self.config.suspectMaskName,
         )
 
-    def maskAndInterpDefect(self, ccdExposure, defectBaseList):
-        """!Mask defects using mask plane "BAD" and interpolate over them, in place.
+    def maskDefect(self, exposure, defectBaseList):
+        """!Mask defects using mask plane "BAD", in place.
 
         Parameters
         ----------
-        ccdExposure : `lsst.afw.image.Exposure`
+        exposure : `lsst.afw.image.Exposure`
             Exposure to process.
         defectBaseList : `List`
             List of defects to mask and interpolate.
@@ -1939,18 +1996,13 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         -----
         Call this after CCD assembly, since defects may cross amplifier boundaries.
         """
-        maskedImage = ccdExposure.getMaskedImage()
+        maskedImage = exposure.getMaskedImage()
         defectList = []
         for d in defectBaseList:
             bbox = d.getBBox()
             nd = measAlg.Defect(bbox)
             defectList.append(nd)
         isrFunctions.maskPixelsFromDefectList(maskedImage, defectList, maskName='BAD')
-        isrFunctions.interpolateDefectList(
-            maskedImage=maskedImage,
-            defectList=defectList,
-            fwhm=self.config.fwhm,
-        )
 
         if self.config.numEdgeSuspect > 0:
             goodBBox = maskedImage.getBBox()
@@ -1963,8 +2015,26 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
                 maskedImage.getMask().getPlaneBitMask("SUSPECT")
             )
 
-    def maskAndInterpNan(self, exposure):
-        """!Mask NaNs using mask plane "UNMASKEDNAN" and interpolate over them, in place.
+    def maskAndInterpolateDefects(self, exposure, defectBaseList):
+        """Mask and interpolate defects using mask plane "BAD", in place.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to process.
+        defectBaseList : `List` of `Defects`
+
+        """
+        self.maskDefects(exposure, defectBaseList)
+        isrFunctions.interpolateFromMask(
+            maskedImage=exposure.getMaskedImage(),
+            fwhm=self.config.fwhm,
+            growSaturatedFootprints=0,
+            maskName="BAD"
+        )
+
+    def maskNan(self, exposure):
+        """!Mask NaNs using mask plane "UNMASKEDNAN", in place.
 
         Parameters
         ----------
@@ -1973,7 +2043,7 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
 
         Notes
         -----
-        We mask and interpolate over all NaNs, including those
+        We mask over all NaNs, including those
         that are masked with other bits (because those may or may
         not be interpolated over later, and we want to remove all
         NaNs).  Despite this behaviour, the "UNMASKEDNAN" mask plane
@@ -1987,18 +2057,25 @@ class IsrTask(pipeBase.PipelineTask, pipeBase.CmdLineTask):
         numNans = maskNans(maskedImage, maskVal)
         self.metadata.set("NUMNANS", numNans)
 
-        # Interpolate over these previously-unmasked NaNs
-        if numNans > 0:
-            self.log.warn("There were %i unmasked NaNs", numNans)
-            nanDefectList = isrFunctions.getDefectListFromMask(
-                maskedImage=maskedImage,
-                maskName='UNMASKEDNAN',
-            )
-            isrFunctions.interpolateDefectList(
-                maskedImage=exposure.getMaskedImage(),
-                defectList=nanDefectList,
-                fwhm=self.config.fwhm,
-            )
+    def maskAndInterpolateNan(self, exposure):
+        """"Mask and interpolate NaNs using mask plane "UNMASKEDNAN", in place.
+
+        Parameters
+        ----------
+        exposure : `lsst.afw.image.Exposure`
+            Exposure to process.
+
+        See Also
+        --------
+        lsst.ip.isr.isrTask.maskNans()
+        """
+        self.maskNan(exposure)
+        isrFunctions.interpolateFromMask(
+            maskedImage=exposure.getMaskedImage(),
+            fwhm=self.config.fwhm,
+            growSaturatedFootprints=0,
+            maskName="UNMASKEDNAN"
+        )
 
     def measureBackground(self, exposure, IsrQaConfig=None):
         """Measure the image background in subgrids, for quality control purposes.
